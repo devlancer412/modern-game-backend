@@ -1,9 +1,10 @@
-__author__ = "ZiYi Tung"
-__copyright__ = "Copyright 2022, Metadhana Studio"
+# Don't edit
+__author__ = "Joseph Anderson"
+__copyright__ = "Copyright 2022, Modern Time Team"
 __license__ = "INTERNAL"
-__version__ = "0.1.8"
+__version__ = "0.1.0"
 __maintainer__ = __author__
-__email__ = "zi@metadhana.io"
+__email__ = "devanderson0412@gmail.com"
 __status__ = "alpha"
 
 
@@ -11,8 +12,8 @@ from fastapi import FastAPI
 from app.__internal import bootstrap
 
 app = FastAPI(
-    title="Affiliate API",
-    description="Affiliate marketing backend API",
+    title="Modern Game Backend API",
+    description="Gambling site backend API",
     version="-".join([__version__, __status__]),
 )
 
