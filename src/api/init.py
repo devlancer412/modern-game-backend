@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from app.__internal import Function
+from src.database import Base, Database
 from config import cfg
 
 class Init(Function):
@@ -18,3 +19,9 @@ class Init(Function):
             allow_methods=["*"],
             allow_headers=["*"],
         )
+        
+        
+        database = Database()
+        engine = database.get_db_connection()
+
+        Base.metadata.create_all(bind=engine)
