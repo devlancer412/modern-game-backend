@@ -1,11 +1,11 @@
 from email.policy import default
-from sqlalchemy import Column, Integer, String, TIMESTAMP, Boolean, text, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, TIMESTAMP, Boolean, text, ForeignKey, Enum, Float
 from sqlalchemy.orm import relationship
 from src.database import Base
 
 from config import cfg
 
-class RoleEnum(Enum):
+class RoleEnum(str, Enum):
   Dev = "DEV"
   Admin = "ADMIN"
   User = "USER"
@@ -13,8 +13,8 @@ class RoleEnum(Enum):
 class User(Base):
   __tablename__ = "user"
   id = Column(Integer, primary_key=True)
-  first_name = Column(String(512), nullable=False)
-  last_name = Column(String(512), nullable=False)
+  first_name = Column(String(512), nullable=False, default="Unnamed")
+  last_name = Column(String(512), nullable=True)
   email = Column(String(512), nullable=True)
   wallet = Column(String(64), nullable=True)
   hashed_password = Column(String(512), nullable=False)
@@ -26,6 +26,7 @@ class User(Base):
   deleted = Column(Boolean, default=False)
   
   access_key = relationship('UserAccessKey', back_populates='user')
+  balances = relationship('UserBalance', back_populates='user')
   
 class UserAccessKey(Base):
   __tablename__ = "user_access_key"
@@ -35,3 +36,15 @@ class UserAccessKey(Base):
   key = Column(String(6), nullable=False)
   
   user = relationship('User', back_populates='access_key')
+  
+  
+class UserBalance(Base):
+  __tablename__ = "user_balance"
+  id = Column(Integer, primary_key=True)
+  user_id = Column(Integer, ForeignKey('user.id'))
+  balance = Column(Float, nullable=False, default=0)
+  rollback = Column(Float, nullable=False, default=0)
+  deposit_balance = Column(Float, nullable=False, default=0)
+  withdraw_balance = Column(Float, nullable=False, default=0)
+  
+  user = relationship('User', back_populates='balances')
