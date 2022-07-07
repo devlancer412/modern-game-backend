@@ -1,6 +1,7 @@
 from email.policy import default
 from sqlalchemy import Column, Integer, String, TIMESTAMP, Boolean, text, ForeignKey, Enum as SAEnum, Float
 from sqlalchemy.orm import relationship
+from sqlalchemy.ext.associationproxy import association_proxy
 from src.database import Base
 from enum import Enum
 
@@ -29,9 +30,15 @@ class User(Base):
   updated_at = Column(TIMESTAMP, nullable=True, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"))
   deleted = Column(Boolean, default=False)
   
+  # relationship with access key
   access_key = relationship('UserAccessKey', back_populates='user', uselist=False)
-  balance = relationship('UserBalance', back_populates='user', uselist=False)
-  histories = relationship('DWHistory', back_populates='user')
+  is_pending = association_proxy('access_key', 'is_pending')
+  # relacionship with balance data 
+  balances = relationship('UserBalance', back_populates='user', uselist=False)
+  balance = association_proxy('balances', 'balance')
+  rollback = association_proxy('balances', 'rollback')
+  # relationship with history data
+  dw_histories = relationship('DWHistory', back_populates='user')
   
 class UserAccessKey(Base):
   __tablename__ = "user_access_key"
@@ -41,7 +48,7 @@ class UserAccessKey(Base):
   key = Column(String(6), nullable=False)
   updated_at = Column(TIMESTAMP, nullable=True, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"))
   
-  user = relationship('User', back_populates='access_key')
+  user = relationship('User', back_populates='access_key', uselist=False)
   
   
 class UserBalance(Base):
@@ -53,7 +60,7 @@ class UserBalance(Base):
   deposit_balance = Column(Float, nullable=False, default=0)
   withdraw_balance = Column(Float, nullable=False, default=0)
   
-  user = relationship('User', back_populates='balance')
+  user = relationship('User', back_populates='balances', uselist=False)
 
 class Direct(str, Enum):
   Deposit = "DEPOSIT"
@@ -67,4 +74,4 @@ class DWHistory(Base):
   amount = Column(Integer, nullable=False, default=0)
   created_at = Column(TIMESTAMP, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
-  user = relationship('User', back_populates='histories')
+  user = relationship('User', back_populates='dw_histories', uselist=False)

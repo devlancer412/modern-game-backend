@@ -19,7 +19,7 @@ email_oauth = OAuth2PasswordBearer(
   scheme_name="JWT"
 )
 
-async def get_current_user_from_oauth(token: str = Depends(email_oauth), session: Session = Depends(get_db_session)) -> User:
+async def get_current_user_from_oauth(token: str = Depends(email_oauth)) -> int:
   try:
     payload = jwt.decode(
       token, JWT_SECRET_KEY, algorithms=[ALGORITHM]
@@ -39,12 +39,4 @@ async def get_current_user_from_oauth(token: str = Depends(email_oauth), session
       headers={"WWW-Authenticate": "Bearer"},
     )
   
-  user: User = session.query(User).filter(and_(token_data.sub == User.id, User.deleted == False)).first()
-  
-  if user is None:
-    raise HTTPException(
-      status_code=status.HTTP_404_NOT_FOUND,
-      detail="Could not find user",
-    )
-  
-  return user
+  return token_data
