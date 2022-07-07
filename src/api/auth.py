@@ -17,9 +17,8 @@ from src.utils.auth import (
 )
 from src.schemas.user import EmailUserBase, AccessKey, WalletSign, WalletUserBase
 from src.schemas.auth import TokenSchema
-from src.models.user import SignMethod, User, UserAccessKey, UserBalance
+from src.models import SignMethod, User, UserAccessKey, UserBalance
 from src.dependencies.database_deps import get_db_session
-from src.dependencies.auth_deps import get_current_user_from_email_oauth, get_current_user_from_wallet_oauth
 
 
 class AuthAPI(Function):
