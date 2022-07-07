@@ -5,9 +5,14 @@ from app.__internal import ConfigBase, UNSET
 
 
 class Configuration(ConfigBase):
-    DB_USER: str = "admin"
-    DB_PASSWORD: str = "Wxmzxa;518"
-    DB_HOST: str = "database-2.c3d4svrxffbd.us-east-1.rds.amazonaws.com"
+    # DB_USER: str = "admin"
+    # DB_PASSWORD: str = "Wxmzxa;518"
+    # DB_HOST: str = "modern-game-db.c3d4svrxffbd.us-east-1.rds.amazonaws.com"
+    # DB_PORT: str = "3306"
+    # DATABASE: str = "modern_game"
+    DB_USER: str = "root"
+    DB_PASSWORD: str = ""
+    DB_HOST: str = "127.0.0.1"
     DB_PORT: str = "3306"
     DATABASE: str = "modern_game"
 

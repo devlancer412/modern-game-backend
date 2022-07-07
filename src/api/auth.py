@@ -14,7 +14,7 @@ from src.utils.auth import (
 )
 from src.schemas.user import EmailUserBase, AccessKey
 from src.schemas.auth import TokenSchema
-from src.models.user import User, UserAccessKey
+from src.models.user import User, UserAccessKey, UserBalance
 from src.dependencies.database_deps import get_db_session
 from src.dependencies.auth_deps import get_current_user_from_email_oauth, get_current_user_from_wallet_oauth
 
@@ -30,6 +30,7 @@ class AuthAPI(Function):
           tags=['auth'],
           responses={404: {"description": "Not found"}},
         )
+        
         @router.post('/signup/email', summary="Create new user",)
         async def create_user_by_email(data: EmailUserBase, session: Session = Depends(get_db_session)):
           # querying database to check if user already exist
@@ -55,6 +56,11 @@ class AuthAPI(Function):
           new_access_key.key = "123456"
           new_access_key.user_id = new_user.id
           session.add(new_access_key)
+
+          new_balance = UserBalance()
+          new_balance.user_id = new_user.id
+          
+          session.add(new_balance)
           session.commit()
           return data
 
@@ -84,9 +90,5 @@ class AuthAPI(Function):
             "access_token": create_access_token(user.id),
             "refresh_token": create_refresh_token(user.id),
           }
-          
-        @router.get('/me', summary='Get details of currently logged in user')
-        async def get_me(user: User = Depends(get_current_user_from_email_oauth)):
-            return user
           
         app.include_router(router)
