@@ -3,6 +3,15 @@ import os
 from datetime import datetime, timedelta
 from typing import Union, Any
 from jose import jwt
+from random import choices
+import string
+
+from web3 import Web3
+from web3.auto import w3
+from eth_account.messages import encode_defunct
+from base58 import b58decode
+from binascii import unhexlify
+from nacl.signing import VerifyKey
 
 from config import cfg
 
@@ -19,7 +28,6 @@ def get_hashed_password(password: str) -> str:
 
 def verify_password(password: str, hashed_pass: str) -> bool:
 	return password_context.verify(password, hashed_pass)
-
 
 def create_access_token(subject: Union[str, Any], expires_delta: int = None) -> str:
 	if expires_delta is not None:
@@ -40,3 +48,27 @@ def create_refresh_token(subject: Union[str, Any], expires_delta: int = None) ->
 	to_encode = {"exp": expires_delta, "sub": str(subject)}
 	encoded_jwt = jwt.encode(to_encode, JWT_REFRESH_SECRET_KEY, ALGORITHM)
 	return encoded_jwt
+
+def generate_accesskey() -> str:
+	chars = string.ascii_uppercase + string.digits
+	return "".join(choices(chars)[0] for _ in range(6))
+
+def validate_metamask_wallet(address: str, signature: str) -> bool:
+	hashed = Web3.solidityKeccak(["address"], [Web3.toChecksumAddress(address)])
+	eth_signed_message_hash = Web3.solidityKeccak(
+			["string", "bytes32"], ["\x19Ethereum Signed Message:\n32", hashed]
+	)
+	message = encode_defunct(eth_signed_message_hash)
+	return w3.eth.account.recover_message(message, signature=signature) == address
+
+def validate_phantom_wallet(address: str, signature: str) -> bool:
+	b58_pubkey = b58decode(address)
+	unhexed_signature = unhexlify(signature)
+
+	verify_key = VerifyKey(b58_pubkey)
+	signed = 'Sign with phatom wallet'.encode('utf-8')
+	try:
+		return verify_key.verify(signed, unhexed_signature)
+	except Exception as ex:
+		print(ex)
+		return False

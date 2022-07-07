@@ -7,14 +7,17 @@ from sqlalchemy.orm import Session
 from operator import and_
 
 from src.utils.auth import (
+    generate_accesskey,
     get_hashed_password,
     create_access_token,
     create_refresh_token,
+    validate_metamask_wallet,
+    validate_phantom_wallet,
     verify_password
 )
-from src.schemas.user import EmailUserBase, AccessKey
+from src.schemas.user import EmailUserBase, AccessKey, WalletUserBase
 from src.schemas.auth import TokenSchema
-from src.models.user import User, UserAccessKey, UserBalance
+from src.models.user import SignMethod, User, UserAccessKey, UserBalance
 from src.dependencies.database_deps import get_db_session
 from src.dependencies.auth_deps import get_current_user_from_email_oauth, get_current_user_from_wallet_oauth
 
@@ -34,7 +37,7 @@ class AuthAPI(Function):
         @router.post('/signup/email', summary="Create new user",)
         async def create_user_by_email(data: EmailUserBase, session: Session = Depends(get_db_session)):
           # querying database to check if user already exist
-          user = session.query(User).filter(and_(User.email == data.email, User.deleted == False)).first()
+          user = session.query(User).filter(and_(User.address == data.email, User.deleted == False)).first()
           if user is not None:
             raise HTTPException(
               status_code=status.HTTP_400_BAD_REQUEST,
@@ -44,7 +47,8 @@ class AuthAPI(Function):
           new_user = User()
           new_user.first_name = data.first_name
           new_user.last_name = data.last_name
-          new_user.email = data.email
+          new_user.address = data.email
+          new_user.sign_method = SignMethod.Email
           new_user.hashed_password = get_hashed_password(data.password)
           
           session.add(new_user)
@@ -53,7 +57,85 @@ class AuthAPI(Function):
           data = {'user_id': new_user.id}
           new_access_key = UserAccessKey()
           new_access_key.is_pending = True
-          new_access_key.key = "123456"
+          new_access_key.key = generate_accesskey()
+          new_access_key.user_id = new_user.id
+          session.add(new_access_key)
+
+          new_balance = UserBalance()
+          new_balance.user_id = new_user.id
+          
+          session.add(new_balance)
+          session.commit()
+          return data
+
+        @router.post('/signup/metamask', summary="Create new user",)
+        async def create_user_by_email(data: WalletUserBase, session: Session = Depends(get_db_session)):
+          # querying database to check if user already exist
+          user = session.query(User).filter(and_(User.address == data.wallet, User.deleted == False)).first()
+          if user is not None:
+            raise HTTPException(
+              status_code=status.HTTP_400_BAD_REQUEST,
+              detail="User with this email already exist"
+            )
+          
+          if validate_metamask_wallet(data.wallet, data.signature) == False:
+            raise HTTPException(
+              status_code=status.HTTP_400_BAD_REQUEST,
+              detail="Invalid signature"
+            )
+
+          new_user = User()
+          new_user.first_name = data.first_name
+          new_user.last_name = data.last_name
+          new_user.address = data.wallet
+          new_user.sign_method = SignMethod.MWallet
+          
+          session.add(new_user)
+          session.flush()
+          session.refresh(new_user, attribute_names=['id'])
+          data = {'user_id': new_user.id}
+          new_access_key = UserAccessKey()
+          new_access_key.is_pending = False
+          new_access_key.key = generate_accesskey()
+          new_access_key.user_id = new_user.id
+          session.add(new_access_key)
+
+          new_balance = UserBalance()
+          new_balance.user_id = new_user.id
+          
+          session.add(new_balance)
+          session.commit()
+          return data
+
+        @router.post('/signup/phantom', summary="Create new user",)
+        async def create_user_by_email(data: WalletUserBase, session: Session = Depends(get_db_session)):
+          # querying database to check if user already exist
+          user = session.query(User).filter(and_(User.address == data.wallet, User.deleted == False)).first()
+          if user is not None:
+            raise HTTPException(
+              status_code=status.HTTP_400_BAD_REQUEST,
+              detail="User with this email already exist"
+            )
+          
+          if validate_phantom_wallet(data.wallet, data.signature) == False:
+            raise HTTPException(
+              status_code=status.HTTP_400_BAD_REQUEST,
+              detail="Invalid signature"
+            )
+
+          new_user = User()
+          new_user.first_name = data.first_name
+          new_user.last_name = data.last_name
+          new_user.address = data.wallet
+          new_user.sign_method = SignMethod.PWallet
+          
+          session.add(new_user)
+          session.flush()
+          session.refresh(new_user, attribute_names=['id'])
+          data = {'user_id': new_user.id}
+          new_access_key = UserAccessKey()
+          new_access_key.is_pending = False
+          new_access_key.key = generate_accesskey()
           new_access_key.user_id = new_user.id
           session.add(new_access_key)
 

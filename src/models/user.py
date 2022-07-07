@@ -9,13 +9,18 @@ class RoleEnum(str, Enum):
   Admin = "ADMIN"
   User = "USER"
 
+class SignMethod(str, Enum):
+  Email = "EMAIL"
+  MWallet = "METAMASK_WALLET"
+  PWallet = "PHANTOM_WALLET"
+
 class User(Base):
   __tablename__ = "user"
   id = Column(Integer, primary_key=True)
   first_name = Column(String(512), nullable=False, default="Unnamed")
   last_name = Column(String(512), nullable=True)
-  email = Column(String(512), nullable=True)
-  wallet = Column(String(64), nullable=True)
+  address = Column(String(512), nullable=True)
+  sign_method = Column(SAEnum(SignMethod), nullable=False, default=SignMethod.Email)
   hashed_password = Column(String(512), nullable=False)
   role = Column(SAEnum(RoleEnum), nullable=False, default=RoleEnum.User)
   avatar_url = Column(String(1024), nullable=True)
@@ -26,7 +31,7 @@ class User(Base):
   
   access_key = relationship('UserAccessKey', back_populates='user')
   balance = relationship('UserBalance', back_populates='user')
-  histories = relationship('DWHistroy', back_populates='user')
+  histories = relationship('DWHistory', back_populates='user')
   
 class UserAccessKey(Base):
   __tablename__ = "user_access_key"
@@ -48,3 +53,17 @@ class UserBalance(Base):
   withdraw_balance = Column(Float, nullable=False, default=0)
   
   user = relationship('User', back_populates='balance')
+
+class Direct(str, Enum):
+  Deposit = "DEPOSIT"
+  Withdraw = "WITHDRAW"
+
+class DWHistory(Base):
+  __tablename__ = "dw_history"
+  id = Column(Integer, primary_key=True)
+  user_id = Column(Integer, ForeignKey('user.id'))
+  direct = Column(SAEnum(Direct), nullable=False, default=Direct.Deposit)
+  amount = Column(Integer, nullable=False, default=0)
+  created_at = Column(TIMESTAMP, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+  user = relationship('User', back_populates='histories')
