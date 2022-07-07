@@ -21,7 +21,7 @@ class User(Base):
   last_name = Column(String(512), nullable=True)
   address = Column(String(512), nullable=True)
   sign_method = Column(SAEnum(SignMethod), nullable=False, default=SignMethod.Email)
-  hashed_password = Column(String(512), nullable=False)
+  hashed_password = Column(String(512), nullable=True)
   role = Column(SAEnum(RoleEnum), nullable=False, default=RoleEnum.User)
   avatar_url = Column(String(1024), nullable=True)
   
@@ -29,8 +29,8 @@ class User(Base):
   updated_at = Column(TIMESTAMP, nullable=True, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"))
   deleted = Column(Boolean, default=False)
   
-  access_key = relationship('UserAccessKey', back_populates='user')
-  balance = relationship('UserBalance', back_populates='user')
+  access_key = relationship('UserAccessKey', back_populates='user', uselist=False)
+  balance = relationship('UserBalance', back_populates='user', uselist=False)
   histories = relationship('DWHistory', back_populates='user')
   
 class UserAccessKey(Base):
@@ -39,6 +39,7 @@ class UserAccessKey(Base):
   user_id = Column(Integer, ForeignKey('user.id'))
   is_pending = Column(Boolean, nullable=False, default=True)
   key = Column(String(6), nullable=False)
+  updated_at = Column(TIMESTAMP, nullable=True, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"))
   
   user = relationship('User', back_populates='access_key')
   

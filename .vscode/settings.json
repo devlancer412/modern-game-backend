@@ -1,3 +1,4 @@
 {
-  "python.pythonPath": "environment\\Scripts\\python.exe"
+  "python.pythonPath": "environment\\Scripts\\python.exe",
+  "python.formatting.provider": "black"
 }

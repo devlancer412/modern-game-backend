@@ -54,19 +54,23 @@ def generate_accesskey() -> str:
 	return "".join(choices(chars)[0] for _ in range(6))
 
 def validate_metamask_wallet(address: str, signature: str) -> bool:
-	hashed = Web3.solidityKeccak(["address"], [Web3.toChecksumAddress(address)])
-	eth_signed_message_hash = Web3.solidityKeccak(
-			["string", "bytes32"], ["\x19Ethereum Signed Message:\n32", hashed]
-	)
-	message = encode_defunct(eth_signed_message_hash)
-	return w3.eth.account.recover_message(message, signature=signature) == address
+	try:
+		hashed = Web3.solidityKeccak(["address"], [Web3.toChecksumAddress(address)])
+		eth_signed_message_hash = Web3.solidityKeccak(
+				["string", "bytes32"], ["\x19Ethereum Signed Message:\n32", hashed]
+		)
+		message = encode_defunct(eth_signed_message_hash)
+		return w3.eth.account.recover_message(message, signature=signature) == address
+	except Exception as ex:
+		print(ex)
+		return False
 
 def validate_phantom_wallet(address: str, signature: str) -> bool:
 	b58_pubkey = b58decode(address)
 	unhexed_signature = unhexlify(signature)
 
 	verify_key = VerifyKey(b58_pubkey)
-	signed = 'Sign with phatom wallet'.encode('utf-8')
+	signed = address.encode('utf-8')
 	try:
 		return verify_key.verify(signed, unhexed_signature)
 	except Exception as ex:

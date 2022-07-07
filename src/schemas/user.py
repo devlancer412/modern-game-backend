@@ -13,6 +13,10 @@ class WalletUserBase(UserBase):
   wallet: str = Field(title = 'Wallet address',  regex='0x[a-zA-Z0-9]{40}')
   signature: str = Field(title = 'Singnature', regex='0x[a-z0-9]{130}')
   
+class WalletSign(BaseModel):
+  wallet: str = Field(title = 'Wallet address',  regex='0x[a-zA-Z0-9]{40}')
+  signature: str = Field(title = 'Singnature', regex='0x[a-z0-9]{130}')
+
 class AccessKey(BaseModel):
   id: int
   is_pending: bool

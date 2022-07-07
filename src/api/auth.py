@@ -15,7 +15,7 @@ from src.utils.auth import (
     validate_phantom_wallet,
     verify_password
 )
-from src.schemas.user import EmailUserBase, AccessKey, WalletUserBase
+from src.schemas.user import EmailUserBase, AccessKey, WalletSign, WalletUserBase
 from src.schemas.auth import TokenSchema
 from src.models.user import SignMethod, User, UserAccessKey, UserBalance
 from src.dependencies.database_deps import get_db_session
@@ -148,7 +148,7 @@ class AuthAPI(Function):
 
         @router.post('/login/email', summary="Create access and refresh tokens for user", response_model=TokenSchema)
         async def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = Depends(get_db_session)):
-          user: User = session.query(User, AccessKey).filter(and_(User.email == form_data.username, User.deleted == False)).first()
+          user: User = session.query(User).join(User.access_key).filter(and_(User.address == form_data.username, User.deleted == False)).first()
           if user is None:
             raise HTTPException(
               status_code=status.HTTP_400_BAD_REQUEST,
@@ -156,6 +156,33 @@ class AuthAPI(Function):
             )
 
           if not verify_password(form_data.password, user.hashed_password):
+            raise HTTPException(
+              status_code=status.HTTP_400_BAD_REQUEST,
+              detail="Incorrect email or password"
+            )
+
+          if user.access_key.is_pending:
+            # send_email_background(background_tasks, 'Hello your reaching out to Modern time', user.email, {'name': user.first_name + user.last_name, 'code': user.access_key.key})
+            raise HTTPException(
+              status_code=status.HTTP_403_FORBIDDEN,
+              detail="You need to verify email"
+            )
+          
+          return {
+            "access_token": create_access_token(user.id),
+            "refresh_token": create_refresh_token(user.id),
+          }
+      
+        @router.post('/login/metamask', summary="Create access and refresh tokens for user", response_model=TokenSchema)
+        async def login(form_data: WalletSign = Depends(), session: Session = Depends(get_db_session)):
+          user: User = session.query(User).join(User.access_key).filter(and_(User.address == form_data.wallet, User.deleted == False)).first()
+          if user is None:
+            raise HTTPException(
+              status_code=status.HTTP_400_BAD_REQUEST,
+              detail="Incorrect email or password"
+            )
+
+          if not validate_metamask_wallet(form_data.wallet, form_data.signature):
             raise HTTPException(
               status_code=status.HTTP_400_BAD_REQUEST,
               detail="Incorrect email or password"
@@ -172,5 +199,32 @@ class AuthAPI(Function):
             "access_token": create_access_token(user.id),
             "refresh_token": create_refresh_token(user.id),
           }
+         
+        @router.post('/login/phantom', summary="Create access and refresh tokens for user", response_model=TokenSchema)
+        async def login(form_data: WalletSign = Depends(), session: Session = Depends(get_db_session)):
+          user: User = session.query(User).join(User.access_key).filter(and_(User.address == form_data.wallet, User.deleted == False)).first()
+          if user is None:
+            raise HTTPException(
+              status_code=status.HTTP_400_BAD_REQUEST,
+              detail="Incorrect email or password"
+            )
+
+          if not validate_phantom_wallet(form_data.wallet, form_data.signature):
+            raise HTTPException(
+              status_code=status.HTTP_400_BAD_REQUEST,
+              detail="Incorrect email or password"
+            )
+            
+          if user.access_key.is_pending:
+            # send_email_background(background_tasks, 'Hello your reaching out to Modern time', user.email, {'name': user.first_name + user.last_name, 'code': user.access_key.key})
+            raise HTTPException(
+              status_code=status.HTTP_403_FORBIDDEN,
+              detail="You need to verify email"
+            )
           
+          return {
+            "access_token": create_access_token(user.id),
+            "refresh_token": create_refresh_token(user.id),
+          }
+
         app.include_router(router)
