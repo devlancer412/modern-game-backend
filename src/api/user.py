@@ -17,7 +17,7 @@ from src.schemas.auth import TokenPayload
 from uniswap import Uniswap
 
 from config import cfg
-from src.utils.web3 import compare_eth_address, get_transaction_eth_value, get_transaction_token_value, wait_transaction_receipt
+from src.utils.web3 import compare_eth_address, get_current_gas_price, get_transaction_eth_value, get_transaction_token_value, wait_transaction_receipt
 
 eth = "0x0000000000000000000000000000000000000000"
 usdt = cfg.ETH_USDT_ADDRESS
@@ -50,11 +50,14 @@ class UserAPI(Function):
 
         @router.get('/price/eth/input', summary='Returns the amount of USDT you get for exact eth')
         async def get_price_eth_input(amount: float) -> float:
-          return (float(self.uniswap.get_price_input(eth, usdt, int(amount*(10**18)))))/10**6
+          fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
+          print(fee / 10**18)
+          return (float(self.uniswap.get_price_input(eth, usdt, int(amount*(10**18)) + fee)))/10**6
 
         @router.get('/price/eth/output', summary='Returns the amount of USDT you get for exact eth')
         async def get_price_eth_input(amount: float) -> float:
-          return (float(self.uniswap.get_price_output(eth, usdt, int(amount*(10**6)))))/10**18
+          fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
+          return (float(self.uniswap.get_price_output(eth, usdt, int(amount*(10**6)))) + fee)/10**18
 
         @router.post('/deposit/eth', summary="Deposit eth to user account")
         async def deposit_eth(tx_hash: str = Query(default = None, regex='0x[a-z0-9]{64}'), payload: TokenPayload = Depends(get_current_user_from_oauth), session:Session = Depends(get_db_session)) -> float:
@@ -78,7 +81,8 @@ class UserAPI(Function):
               detail="Invalid transfer-didn't send to treasury"
             )
 
-          tx = self.uniswap.make_trade(eth, usdt, int(to_wei(tx_data['value'], 'wei')))
+          fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
+          tx = self.uniswap.make_trade(eth, usdt, int(to_wei(tx_data['value'], 'wei') - fee))
           receipt = wait_transaction_receipt(tx)
 
           received = float(int(receipt.logs[2].data, 16))/10**6

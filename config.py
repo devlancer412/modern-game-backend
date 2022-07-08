@@ -26,6 +26,7 @@ class Configuration(ConfigBase):
     # UNUSWAP_FACTORY_ADDRESS: str = "0x9c83dCE8CA20E9aAF9D3efc003b2ea62aBC08351"
 
     ETH_USDT_ADDRESS: str = "0x110a13FC3efE6A245B50102D2d79B3E76125Ae83"
+    ETH_SWAP_FEE: str = "250000"
 # --- Do not edit anything below this line, or do it, I'm not your mom ----
 defaults = Configuration(autoload=False)
 cfg = Configuration()

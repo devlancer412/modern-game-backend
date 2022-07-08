@@ -46,3 +46,6 @@ def get_transaction_token_value(tx_hash: str) -> object:
 
 def wait_transaction_receipt(tx_hash: HexBytes) -> object:
   return web3_eth.eth.wait_for_transaction_receipt(tx_hash)
+
+def get_current_gas_price() -> int:
+  return web3_eth.eth._gas_price()
