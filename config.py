@@ -19,7 +19,13 @@ class Configuration(ConfigBase):
     JWT_SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
     JWT_REFRESH_SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
 
-    DEFAULT_AVATAR = "avatar url"
+    # test in ropsten
+    ETH_RPC_URL: str = "https://ropsten.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161"
+    ETH_TREASURY_ADDRESS: str = "0x5C29Ac1d01aE85Bd93D1Cc1C457c0d4aed46C0AF"
+    ETH_TREASURY_PRIVATE_KEY: str = "cc2380168b30452e01321b5d8d810714d37e57e2b035b63c8de5d0624ec56def"
+    # UNUSWAP_FACTORY_ADDRESS: str = "0x9c83dCE8CA20E9aAF9D3efc003b2ea62aBC08351"
+
+    ETH_USDT_ADDRESS: str = "0x110a13FC3efE6A245B50102D2d79B3E76125Ae83"
 # --- Do not edit anything below this line, or do it, I'm not your mom ----
 defaults = Configuration(autoload=False)
 cfg = Configuration()
