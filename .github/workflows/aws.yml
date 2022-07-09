@@ -45,7 +45,7 @@ jobs:
         run: |
           # Assuming the Deployment Group is already setup
           aws deploy create-deployment \
-            --application-name modern-game \
-            --deployment-group-name ModernGameDeploymentGoup \
+            --application-name modern-time-application \
+            --deployment-group-name modern-game-deployment-group \
             --deployment-config-name CodeDeployDefault.OneAtATime \
             --github-location repository=${{ github.repository }},commitId=${{ github.sha }}

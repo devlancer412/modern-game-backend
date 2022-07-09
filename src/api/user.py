@@ -70,7 +70,7 @@ class UserAPI(Function):
           fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
           return (float(self.uniswap.get_price_output(usdt, eth, int(amount*(10**18))+ fee)))/10**6
 
-        @router.post('/deposit/eth', summary="Deposit eth to user account")
+        @router.post('/deposit/eth', summary="Deposit ETH to user account")
         async def deposit_eth(tx_hash: str = Query(default = None, regex='0x[a-z0-9]{64}'), payload: TokenPayload = Depends(get_current_user_from_oauth), session:Session = Depends(get_db_session)) -> float:
 
           if tx_hash == None:
@@ -155,7 +155,7 @@ class UserAPI(Function):
 
           return new_history
 
-        @router.post('/withdraw/eth', summary="Withdraw money with eth")
+        @router.post('/withdraw/eth', summary="Withdraw money with ETH")
         async def withdraw_eth(amount: float = Query(default=0), wallet: str = Query(default=None, regex='0x[A-Za-z0-9]{40}'), payload: TokenPayload = Depends(get_current_user_from_oauth), session:Session = Depends(get_db_session)) -> float:
           if amount == 0:
             raise HTTPException(
