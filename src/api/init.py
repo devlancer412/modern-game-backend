@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.__internal import Function
 from src.database import Base, Database
@@ -19,8 +20,9 @@ class Init(Function):
             allow_methods=["*"],
             allow_headers=["*"],
         )
-        
-        
+        app.add_middleware(SessionMiddleware, secret_key=cfg.JWT_SECRET_KEY)
+
+
         database = Database()
         engine = database.get_db_connection()
 

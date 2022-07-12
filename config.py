@@ -5,19 +5,19 @@ from app.__internal import ConfigBase, UNSET
 
 
 class Configuration(ConfigBase):
-    DB_USER: str = "admin"
-    DB_PASSWORD: str = "Wxmzxa;518"
-    DB_HOST: str = "modern-game-db.c3d4svrxffbd.us-east-1.rds.amazonaws.com"
-    DB_PORT: str = "3306"
-    DATABASE: str = "modern_game"
-    # DB_USER: str = "root"
-    # DB_PASSWORD: str = ""
-    # DB_HOST: str = "127.0.0.1"
+    # DB_USER: str = "admin"
+    # DB_PASSWORD: str = "Wxmzxa;518"
+    # DB_HOST: str = "modern-game-db.c3d4svrxffbd.us-east-1.rds.amazonaws.com"
     # DB_PORT: str = "3306"
     # DATABASE: str = "modern_game"
+    DB_USER: str = "root"
+    DB_PASSWORD: str = ""
+    DB_HOST: str = "127.0.0.1"
+    DB_PORT: str = "3306"
+    DATABASE: str = "modern_game"
 
     GOOGLE_CLIENT_ID: str = UNSET
-    GOOGLE_SECRET_KEY: str = UNSET
+    GOOGLE_CLIENT_SECRET: str = UNSET
 
     JWT_SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
     JWT_REFRESH_SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
@@ -30,6 +30,8 @@ class Configuration(ConfigBase):
 
     ETH_USDT_ADDRESS: str = "0x110a13FC3efE6A245B50102D2d79B3E76125Ae83"
     ETH_SWAP_FEE: str = "250000"
+
+    FRONTEND_URL: str = "http://127.0.0.1:8000/auth/signup/google/token"
 # --- Do not edit anything below this line, or do it, I'm not your mom ----
 defaults = Configuration(autoload=False)
 cfg = Configuration()
