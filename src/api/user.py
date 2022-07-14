@@ -10,21 +10,24 @@ from uniswap import Uniswap
 
 from src.dependencies.auth_deps import get_current_user_from_oauth
 from src.dependencies.database_deps import get_db_session
-from src.models import User, UserBalance
+from src.models import DWHistory, Direct, User, UserBalance
 from src.schemas.auth import TokenPayload
 
 from config import cfg
-from src.utils.background_transaction_filter import WalletData, create_transacion_filter, get_eth_deposit_wallet
-from src.utils.web3 import get_current_gas_price, send_eth_token_to, wait_transaction_receipt
+from src.schemas.user import WalletData
+from src.utils.background_transaction_filter import create_transacion_filter
+from src.utils.temp_wallets import get_eth_deposit_wallet, get_sol_deposit_wallet
+from src.utils.web3 import get_current_gas_price, send_eth_stable_to, wait_transaction_receipt
 
 eth = "0x0000000000000000000000000000000000000000"
 eth_usdt = cfg.ETH_USDT_ADDRESS
+eth_usdc = cfg.ETH_USDC_ADDRESS
 
 class UserAPI(Function):
 
     def __init__(self, error: Callable):
-        self.log.info("Swap api initailized")
-        self.uniswap = Uniswap(address=cfg.ETH_TREASURY_ADDRESS, private_key=cfg.ETH_TREASURY_PRIVATE_KEY, version=2, provider=cfg.ETH_RPC_URL)
+        self.log.info("user api initailized")
+        # self.uniswap = Uniswap(address=cfg.ETH_TREASURY_ADDRESS, private_key=cfg.ETH_TREASURY_PRIVATE_KEY, version=2, provider=cfg.ETH_RPC_URL)
         create_transacion_filter()
 
     def Bootstrap(self, app: FastAPI):
@@ -79,6 +82,16 @@ class UserAPI(Function):
 
           return wallet.public_key
 
+        @router.post('/deposit_wallet/sol', summary="Return deposit wallet data")
+        async def deposit_eth_eth(payload: TokenPayload = Depends(get_current_user_from_oauth), session:Session = Depends(get_db_session)) -> float:
+
+          wallet: WalletData = get_sol_deposit_wallet()
+          wallet.user_id = payload.sub
+          wallet.timestamp = datetime.today().timestamp()
+          wallet.is_using = True
+
+          return wallet.public_key
+
         @router.post('/withdraw/eth/eth', summary="Withdraw money with ETH")
         async def withdraw_eth_eth(amount: float = Query(default=0), wallet: str = Query(default=None, regex='0x[A-Za-z0-9]{40}'), payload: TokenPayload = Depends(get_current_user_from_oauth), session:Session = Depends(get_db_session)) -> float:
           if amount == 0:
@@ -98,7 +111,16 @@ class UserAPI(Function):
               detail="Much than real amount"
             )
 
-          user_balance.balance -= float(self.uniswap.get_price_output(eth_usdt, eth, amount*10**18) + fee)/10**6
+          delta_balance = float(self.uniswap.get_price_output(eth_usdt, eth, amount*10**18) + fee)/10**6
+          user_balance -= delta_balance
+          user_balance.withdraw_balance += delta_balance
+
+          new_history = DWHistory()
+          new_history.amount = delta_balance
+          new_history.direct = Direct.Withdraw
+          new_history.user_id = payload.sub
+
+          session.add(new_history)
 
           tx = self.uniswap.make_trade_output(eth_usdt, eth, amount*10**18, wallet)
           receipt = wait_transaction_receipt(tx)
@@ -125,7 +147,7 @@ class UserAPI(Function):
             )
 
           try:
-            receipt = send_eth_token_to(eth_usdt, wallet, amount)
+            receipt = send_eth_stable_to(eth_usdt, wallet, amount)
           except Exception as ex:
             print(ex)
             raise HTTPException(
@@ -133,8 +155,58 @@ class UserAPI(Function):
               detail="Some error occured in server side"
             )
 
-          user_balance.balance -= amount + fee_usdt
+          delta_balance = amount + fee_usdt
+          user_balance.balance -= delta_balance
+          user_balance.withdraw_balance += delta_balance
+
+          new_history = DWHistory()
+          new_history.amount = delta_balance
+          new_history.direct = Direct.Withdraw
+          new_history.user_id = payload.sub
+
+          session.add(new_history)
           return receipt['blockHash'].hex()
 
+        app.include_router(router)
+
+        @router.post('/withdraw/eth/usdc', summary="Withdraw money with USDC")
+        async def withdraw_eth(amount: float = Query(default=0), wallet: str = Query(default=None, regex='0x[A-Za-z0-9]{40}'), payload: TokenPayload = Depends(get_current_user_from_oauth), session:Session = Depends(get_db_session)) -> float:
+          if amount == 0:
+            raise HTTPException(
+              status_code=status.HTTP_400_BAD_REQUEST,
+              detail="You need to set amount more than 0"
+            )
+
+          user_balance: UserBalance = session.query(UserBalance).filter(UserBalance.user_id == payload.sub).one()
+
+          fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
+          fee_usdt = float(self.uniswap.get_price_output(eth_usdc, eth, fee))/10**6
+
+          if amount + fee_usdt > user_balance.balance:
+            raise HTTPException(
+              status_code=status.HTTP_400_BAD_REQUEST,
+              detail="Much than real amount"
+            )
+
+          try:
+            receipt = send_eth_stable_to(eth_usdc, wallet, amount)
+          except Exception as ex:
+            print(ex)
+            raise HTTPException(
+              status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+              detail="Some error occured in server side"
+            )
+
+          delta_balance = amount + fee_usdt
+          user_balance.balance -= delta_balance
+          user_balance.withdraw_balance += delta_balance
+
+          new_history = DWHistory()
+          new_history.amount = delta_balance
+          new_history.direct = Direct.Withdraw
+          new_history.user_id = payload.sub
+
+          session.add(new_history)
+          return receipt['blockHash'].hex()
 
         app.include_router(router)

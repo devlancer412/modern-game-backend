@@ -3,77 +3,62 @@ import asyncio
 from datetime import datetime, timedelta
 import time
 from threading import Thread
-from bip_utils import *
 
 from config import cfg
-from src.utils.wallet_dw import deposited_eth
-from src.schemas.user import WalletData
-from .web3 import web3_eth
+from src.utils.wallet_dw import deposited_eth, deposited_eth_1155nft, deposited_eth_721nft, deposited_eth_usdt
+from .web3 import compare_eth_address, uint256_to_address, web3_eth
+from src.utils.temp_wallets import eth_wallet_list, sol_wallet_list
 
-eth_wallet_list = []
-sol_wallet_list = []
+ETH_ERC1155_TRANSFER_TOPIC = "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62"
+ETH_NORMAL_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+# setup acceptable token address list
+ETH_TOKEN_LIST = [cfg.ETH_USDT_ADDRESS]
+# setup acceptable NFT address list
+ETH_721NFT_LIST = []
+ETH_1155NFT_LIST = []
 
-def setup_eth_temp_wallets():
-  seed_bytes = Bip39SeedGenerator(cfg.ETH_TEMP_MNEMONIC).Generate("")
-  bip44_mst_ctx = Bip44.FromSeed(seed_bytes, Bip44Coins.ETHEREUM)
-  bip44_acc_ctx = bip44_mst_ctx.Purpose().Coin().Account(0)
-  for i in range(100):
-    bip44_chg_ctx = bip44_acc_ctx.Change(Bip44Changes.CHAIN_EXT).AddressIndex(i)
-
-    new_wallet = WalletData()
-    new_wallet.public_key = bip44_chg_ctx.PublicKey().ToAddress()
-    new_wallet.private_key = bip44_chg_ctx.PrivateKey().Raw().ToHex()
-    new_wallet.timestamp = datetime.today().timestamp()
-    new_wallet.user_id = -1
-    new_wallet.is_using = False
-
-    eth_wallet_list.append(new_wallet)
-
-def setup_sol_temp_wallets():
-  seed_bytes = Bip39SeedGenerator(cfg.ETH_TEMP_MNEMONIC).Generate()
-  bip44_mst_ctx = Bip44.FromSeed(seed_bytes, Bip44Coins.SOLANA)
-  for i in range(100):
-    bip44_acc_ctx = bip44_mst_ctx.Purpose().Coin().Account(i)
-    bip44_chg_ctx = bip44_acc_ctx.Change(Bip44Changes.CHAIN_EXT)
-
-    new_wallet = WalletData()
-    new_wallet.public_key = bip44_chg_ctx.PublicKey().ToAddress()
-    new_wallet.private_key = Base58Encoder.Encode(
-        bip44_chg_ctx.PrivateKey().Raw().ToBytes() + bip44_chg_ctx.PublicKey().RawCompressed().ToBytes()[1:]
-    )
-    new_wallet.timestamp = datetime.today().timestamp()
-    new_wallet.user_id = -1
-    new_wallet.is_using = False
-
-    sol_wallet_list.append(new_wallet)
-
-setup_eth_temp_wallets()
-setup_sol_temp_wallets()
-
-def get_eth_deposit_wallet():
-  remove_time_stamp = (datetime.today() - timedelta(days=1)).timestamp()
-  for wallet in eth_wallet_list:
-    if wallet.timestamp < remove_time_stamp and wallet.is_using:
-      wallet.is_using = False
-    if wallet.is_using == False:
-      return wallet
-
-def get_sol_deposit_wallet():
-  remove_time_stamp = (datetime() - timedelta(days=1)).timestamp()
-  for wallet in sol_wallet_list:
-    if wallet.timestamp < remove_time_stamp and wallet.is_using:
-      wallet.is_using = False
-    if wallet.is_using == False:
-      return wallet
-
+# ethereum transaction filter setup
 async def handle_block(block):
     block = web3_eth.eth.getBlock(block.hex(), full_transactions=True)
     transactions = block['transactions']
     for tx in transactions:
-      wallet = list(filter(lambda item: item.public_key == tx.to and item.is_using == True, eth_wallet_list))
-      if len(wallet) > 0:
-        wallet = wallet[0]
-        return await deposited_eth(wallet=wallet, amount=tx.value)
+      to_wallet = list(filter(lambda item: item.public_key == tx.to and item.is_using == True, eth_wallet_list))
+      if len(to_wallet) > 0:
+        to_wallet = to_wallet[0]
+        to_wallet.is_using = False
+        await deposited_eth(wallet=to_wallet, amount=tx.value)
+        continue
+
+      receipt = web3_eth.eth.get_transaction_receipt(tx.hash)
+      transfer_logs = list(filter(lambda log: log.topics[0] == ETH_NORMAL_TRANSFER_TOPIC or log.topics[0] == ETH_ERC1155_TRANSFER_TOPIC, receipt.logs))
+
+      if len(transfer_logs) == 0:
+        return
+
+      for log in transfer_logs:
+        if log.topics[0] == ETH_ERC1155_TRANSFER_TOPIC:
+          to_address = uint256_to_address(log.topics[2])
+        else:
+          to_address = uint256_to_address(log.topics[1])
+
+        to_wallet = list(filter(lambda item: item.public_key == to_address and item.is_using == True, eth_wallet_list))
+
+        if len(to_wallet) == 0:
+          continue
+
+        to_wallet = to_wallet[0]
+        contract_address = tx.to.hex()
+        if compare_eth_address(contract_address, cfg.ETH_USDT_ADDRESS):
+          await deposited_eth_usdt(wallet=to_wallet, amount=log.data.hex())
+          continue
+
+        if ETH_721NFT_LIST.index(contract_address) >= 0:
+          await deposited_eth_721nft(address=contract_address, wallet=to_wallet, id=log.topics[3])
+          continue
+
+        if ETH_1155NFT_LIST.index(contract_address) >= 0:
+          await deposited_eth_1155nft(address=contract_address, wallet=to_wallet, id=log.topics[3])
+          continue
 
 async def log_loop(block_filter, poll_interval):
     while True:

@@ -39,6 +39,10 @@ class User(Base):
   rollback = association_proxy('balances', 'rollback')
   # relationship with history data
   dw_histories = relationship('DWHistory', back_populates='user')
+  # relationship with nfts
+  nfts = relationship('NFT', back_populates='owner')
+  out_nfts = relationship('NFTHistory', back_populates='before_user')
+  in_nfts = relationship('NFTHistory', back_populates='after_user')
 
 class UserAccessKey(Base):
   __tablename__ = "user_access_key"
@@ -75,3 +79,46 @@ class DWHistory(Base):
   created_at = Column(TIMESTAMP, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
   user = relationship('User', back_populates='dw_histories', uselist=False)
+
+class Network(str, Enum):
+  Ethereum = "ETHEREUM"
+  Solana = "SOLANA"
+
+class NFTType(str, Enum):
+  ERC721 = "ERC721"
+  ERC1155 = "ERC1155"
+
+class NFT(Base):
+  __tablename__ = "nft"
+  id = Column(Integer, primary_key=True)
+  user_id = Column(Integer, ForeignKey('user.id'))
+  network = Column(SAEnum(Network), nullable=False, default=Network.Ethereum)
+  token_address = Column(String(66), nullable=False)
+  token_id = Column(String(66), nullable=True)
+  price = Column(Float, nullable=False, default=0)
+  nft_type = Column(SAEnum(NFTType), nullable=False, default=NFTType.ERC721)
+  deleted = Column(Boolean, nullable=False, default=False)
+
+  temp_address = Column(String(66), nullable=False)
+
+  owner = relationship('User', back_populates="nfts", uselist=False)
+
+class NFTNote(str, Enum):
+  Jackpot = "JACKPOT"
+  Marketplace = "MARKETPLACE"
+  Deposit = "DEPOSIT"
+  Withdraw = "WITHDRAW"
+
+class NFTHistory(Base):
+  __tablename__ = "nft_history"
+  id = Column(Integer, primary_key=True)
+  nft_id = Column(Integer, ForeignKey('nft.id'))
+  before_user_id = Column(Integer, ForeignKey('user.id'), nullable=True)
+  after_user_id = Column(Integer, ForeignKey('user.id'), nullable=True)
+  price = Column(Float, nullable=False, default=0)
+  note = Column(SAEnum(NFTNote), nullable=False)
+  created_at = Column(TIMESTAMP, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+  nft = relationship('User', back_populates='histories', uselist=False)
+  before_user = relationship('User', foreign_keys=['nft_history.before_user_id'], back_populates='out_nfts', uselist=False)
+  after_user = relationship('User', foreign_keys=['nft_history.after_user_id'], back_populates='in_nfts', uselist=False)

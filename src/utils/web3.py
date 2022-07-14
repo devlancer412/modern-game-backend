@@ -1,7 +1,4 @@
-from http.client import HTTPException
 from eth_abi import decode_abi
-from eth_account import Account
-from eth_utils import to_bytes
 from hexbytes import HexBytes
 from web3 import Web3
 from web3.middleware import construct_sign_and_send_raw_middleware
@@ -9,6 +6,9 @@ from web3.auto import w3
 
 from config import cfg
 from src.abis.ERC20 import abi as ERC20_abi
+from src.abis.ERC721 import abi as ERC721_abi
+from src.abis.ERC1155 import abi as ERC1155_abi
+from src.utils.temp_wallets import eth_wallet_list, sol_wallet_list
 
 web3_eth = Web3(provider=Web3.HTTPProvider(cfg.ETH_RPC_URL))
 web3_eth.middleware_onion.add(construct_sign_and_send_raw_middleware(cfg.ETH_TREASURY_PRIVATE_KEY))
@@ -57,8 +57,32 @@ def wait_transaction_receipt(tx_hash: HexBytes) -> object:
 def get_current_gas_price() -> int:
   return web3_eth.eth._gas_price()
 
-def send_eth_token_to(address: str, wallet: str, amount:int) -> object:
+def get_eth_usdt_contract() -> object:
+  contract_address = Web3.toChecksumAddress(cfg.ETH_USDT_ADDRESS)
+
+  contract = web3_eth.eth.contract(contract_address, abi=ERC20_abi)
+  return contract
+
+def get_eth_usdc_contract() -> object:
+  contract_address = Web3.toChecksumAddress(cfg.ETH_USDC_ADDRESS)
+
+  contract = web3_eth.eth.contract(contract_address, abi=ERC20_abi)
+  return contract
+
+def get_eth_erc721_contract(address: str) -> object:
   contract_address = Web3.toChecksumAddress(address)
+
+  contract = web3_eth.eth.contract(contract_address, abi=ERC721_abi)
+  return contract
+
+def get_eth_erc1155_contract(address: str) -> object:
+  contract_address = Web3.toChecksumAddress(address)
+
+  contract = web3_eth.eth.contract(contract_address, abi=ERC1155_abi)
+  return contract
+
+def send_eth_stable_to(token_address: str, wallet: str, amount:int) -> object:
+  contract_address = Web3.toChecksumAddress(token_address)
   treasury_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
   wallet_address = Web3.toChecksumAddress(wallet)
 
@@ -79,6 +103,40 @@ def send_eth_token_to(address: str, wallet: str, amount:int) -> object:
 
   return receipt
 
-def create_eth_wallet() -> object:
-  new_wallet = Account.create()
-  return new_wallet
+def send_eth_erc721_to(from_wallet: str, to_wallet:str, address:str, id: str) -> object:
+  contract_address = Web3.toChecksumAddress(address)
+  from_address = Web3.toChecksumAddress(from_wallet)
+  to_address = Web3.toChecksumAddress(to_wallet)
+
+  # try:
+  contract = get_eth_erc721_contract(contract_address)
+  transaction = contract.functions.transfer(to_address, id).buildTransaction({
+    'type': '0x2',  # optional - defaults to '0x2' when dynamic fee transaction params are present
+    'from': from_address,  # optional if w3.eth.default_account was set with acct.address
+    'maxFeePerGas': 2000000000,  # required for dynamic fee transactions
+    'maxPriorityFeePerGas': 1000000000,  # required for dynamic fee transactions
+  })
+
+  hash_hex = web3_eth.eth.send_transaction(transaction)
+  receipt = wait_transaction_receipt(hash_hex)
+
+  return receipt
+
+def send_eth_erc1155_to(from_wallet: str, to_wallet:str, address:str, id: str) -> object:
+  contract_address = Web3.toChecksumAddress(address)
+  from_address = Web3.toChecksumAddress(from_wallet)
+  to_address = Web3.toChecksumAddress(to_wallet)
+
+  # try:
+  contract = get_eth_erc1155_contract(contract_address)
+  transaction = contract.functions.transfer(from_address, to_address, id).buildTransaction({
+    'type': '0x2',  # optional - defaults to '0x2' when dynamic fee transaction params are present
+    'from': from_address,  # optional if w3.eth.default_account was set with acct.address
+    'maxFeePerGas': 2000000000,  # required for dynamic fee transactions
+    'maxPriorityFeePerGas': 1000000000,  # required for dynamic fee transactions
+  })
+
+  hash_hex = web3_eth.eth.send_transaction(transaction)
+  receipt = wait_transaction_receipt(hash_hex)
+
+  return receipt
