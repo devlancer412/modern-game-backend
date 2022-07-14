@@ -78,3 +78,7 @@ def send_eth_token_to(address: str, wallet: str, amount:int) -> object:
   receipt = wait_transaction_receipt(hash_hex)
 
   return receipt
+
+def create_eth_wallet() -> object:
+  new_wallet = Account.create()
+  return new_wallet

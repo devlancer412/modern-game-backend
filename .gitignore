@@ -1,4 +1,5 @@
 __pycache__
 environment
+test_param_generate
 /tests_value
 .env

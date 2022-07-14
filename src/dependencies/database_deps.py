@@ -1,6 +1,5 @@
-from ..database import Database
+from ..database import database
 
-database = Database()
 engine = database.get_db_connection()
 
 # Dependencies

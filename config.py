@@ -12,7 +12,7 @@ class Configuration(ConfigBase):
     # DATABASE: str = "modern_game"
     DB_USER: str = "root"
     DB_PASSWORD: str = ""
-    DB_HOST: str = "127.0.0.1"
+    DB_HOST: str = "localhost"
     DB_PORT: str = "3306"
     DATABASE: str = "modern_game"
 
@@ -24,8 +24,10 @@ class Configuration(ConfigBase):
 
     # test in ropsten
     ETH_RPC_URL: str = "https://ropsten.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161"
+    # ETH_RPC_URL: str = "https://rinkeby.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161"
     ETH_TREASURY_ADDRESS: str = "0x5C29Ac1d01aE85Bd93D1Cc1C457c0d4aed46C0AF"
     ETH_TREASURY_PRIVATE_KEY: str = "cc2380168b30452e01321b5d8d810714d37e57e2b035b63c8de5d0624ec56def"
+    ETH_TEMP_MNEMONIC: str = UNSET
     # UNUSWAP_FACTORY_ADDRESS: str = "0x9c83dCE8CA20E9aAF9D3efc003b2ea62aBC08351"
 
     ETH_USDT_ADDRESS: str = "0x110a13FC3efE6A245B50102D2d79B3E76125Ae83"

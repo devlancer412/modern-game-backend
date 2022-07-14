@@ -4,7 +4,7 @@ from sqlalchemy.ext.declarative import declarative_base
 
 from config import cfg
 
-MYSQL_URL = "mysql+pymysql://{}:{}@{}:{}/{}?charset=utf8".format(cfg.DB_USER, cfg.DB_PASSWORD, cfg.DB_HOST, cfg.DB_PORT, cfg.DATABASE) 
+MYSQL_URL = "mysql+pymysql://{}:{}@{}:{}/{}?charset=utf8".format(cfg.DB_USER, cfg.DB_PASSWORD, cfg.DB_HOST, cfg.DB_PORT, cfg.DATABASE)
 POOL_SIZE = 20
 POOL_RECYCLE = 3600
 POOL_TIMEOUT = 15
@@ -22,12 +22,16 @@ class Database():
       try:
         self.engine = create_engine(MYSQL_URL, pool_size=POOL_SIZE, pool_recycle=POOL_RECYCLE,
         pool_timeout=POOL_TIMEOUT, max_overflow=MAX_OVERFLOW, connect_args=connect_args)
+        self.connection_is_active
         return self.engine
       except Exception as ex:
         print("Error connecting to DB : ", ex)
     return self.engine
 
   def get_db_session(self):
+    if self.engine == None:
+      print("No database engine")
+      return None
     try:
       Session = sessionmaker(bind=self.engine)
       session = Session()
@@ -35,5 +39,6 @@ class Database():
     except Exception as ex:
       print("Error getting DB session : ", ex)
       return None
-    
+
 Base = declarative_base()
+database = Database()

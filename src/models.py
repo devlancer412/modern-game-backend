@@ -71,7 +71,6 @@ class DWHistory(Base):
   id = Column(Integer, primary_key=True)
   user_id = Column(Integer, ForeignKey('user.id'))
   direct = Column(SAEnum(Direct), nullable=False, default=Direct.Deposit)
-  tx_hash = Column(String(66), nullable=False)
   amount = Column(Float, nullable=False, default=0)
   created_at = Column(TIMESTAMP, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
