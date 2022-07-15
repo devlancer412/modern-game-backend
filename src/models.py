@@ -41,8 +41,8 @@ class User(Base):
   dw_histories = relationship('DWHistory', back_populates='user')
   # relationship with nfts
   nfts = relationship('NFT', back_populates='owner')
-  out_nfts = relationship('NFTHistory', back_populates='before_user')
-  in_nfts = relationship('NFTHistory', back_populates='after_user')
+  out_nfts = relationship('NFTHistory', foreign_keys='[NFTHistory.before_user_id]', back_populates='before_user')
+  in_nfts = relationship('NFTHistory', foreign_keys='[NFTHistory.after_user_id]', back_populates='after_user')
 
 class UserAccessKey(Base):
   __tablename__ = "user_access_key"
@@ -101,7 +101,8 @@ class NFT(Base):
 
   temp_address = Column(String(66), nullable=False)
 
-  owner = relationship('User', back_populates="nfts", uselist=False)
+  owner = relationship('User', back_populates='nfts', uselist=False)
+  histories = relationship('NFTHistory', back_populates='nft')
 
 class NFTNote(str, Enum):
   Jackpot = "JACKPOT"
@@ -119,6 +120,6 @@ class NFTHistory(Base):
   note = Column(SAEnum(NFTNote), nullable=False)
   created_at = Column(TIMESTAMP, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
-  nft = relationship('User', back_populates='histories', uselist=False)
-  before_user = relationship('User', foreign_keys=['nft_history.before_user_id'], back_populates='out_nfts', uselist=False)
-  after_user = relationship('User', foreign_keys=['nft_history.after_user_id'], back_populates='in_nfts', uselist=False)
+  nft = relationship('NFT', back_populates='histories', uselist=False)
+  before_user = relationship('User', foreign_keys=[before_user_id], back_populates='out_nfts', uselist=False)
+  after_user = relationship('User', foreign_keys=[after_user_id], back_populates='in_nfts', uselist=False)

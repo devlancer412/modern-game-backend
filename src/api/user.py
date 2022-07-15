@@ -27,7 +27,7 @@ class UserAPI(Function):
 
     def __init__(self, error: Callable):
         self.log.info("user api initailized")
-        # self.uniswap = Uniswap(address=cfg.ETH_TREASURY_ADDRESS, private_key=cfg.ETH_TREASURY_PRIVATE_KEY, version=2, provider=cfg.ETH_RPC_URL)
+        self.uniswap = Uniswap(address=cfg.ETH_TREASURY_ADDRESS, private_key=cfg.ETH_TREASURY_PRIVATE_KEY, version=2, provider=cfg.ETH_RPC_URL)
         create_transacion_filter()
 
     def Bootstrap(self, app: FastAPI):

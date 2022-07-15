@@ -249,7 +249,7 @@ class AuthAPI(Function):
               )
 
             user_data = json.loads(response.content.decode('utf-8'))
-            user = session.query(User).filter(and_(User.address == data.email, User.deleted == False)).first()
+            user = session.query(User).filter(and_(User.address == user_data.email, User.deleted == False)).first()
             if user is not None:
               raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

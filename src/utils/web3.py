@@ -16,7 +16,7 @@ web3_eth.eth.default_account = cfg.ETH_TREASURY_ADDRESS
 
 def compare_eth_address(address1: str, address2: str) -> bool:
   try:
-    return Web3.toChecksumAddress(address1) == Web3.toChecksumAddress(address2)
+    return address1.lower() == address2.lower()
   except:
     return False
 
@@ -57,14 +57,8 @@ def wait_transaction_receipt(tx_hash: HexBytes) -> object:
 def get_current_gas_price() -> int:
   return web3_eth.eth._gas_price()
 
-def get_eth_usdt_contract() -> object:
-  contract_address = Web3.toChecksumAddress(cfg.ETH_USDT_ADDRESS)
-
-  contract = web3_eth.eth.contract(contract_address, abi=ERC20_abi)
-  return contract
-
-def get_eth_usdc_contract() -> object:
-  contract_address = Web3.toChecksumAddress(cfg.ETH_USDC_ADDRESS)
+def get_eth_erc20_contract(coin_address: str) -> object:
+  contract_address = Web3.toChecksumAddress(coin_address)
 
   contract = web3_eth.eth.contract(contract_address, abi=ERC20_abi)
   return contract
