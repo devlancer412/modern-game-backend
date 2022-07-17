@@ -33,6 +33,14 @@ class Configuration(ConfigBase):
     ETH_USDT_ADDRESS: str = "0x110a13FC3efE6A245B50102D2d79B3E76125Ae83"
     ETH_USDC_ADDRESS: str = "0x110a13FC3efE6A245B50102D2d79B3E76125Ae83"
     ETH_SWAP_FEE: str = "250000"
+
+    SOL_RPC_URL: str = "https://api.mainnet-beta.solana.com"
+    SOL_WSS_URL: str = "wss://api.mainnet-beta.solana.com"
+    SOL_TREASURY_ADDRESS: str = "2T6sdfxViTSow8pxeDkVb2C2J6Kj2XtYDWjgbGTgN3Nb"
+    SOL_TREASURY_PRIVATE_KEY: str = "2vHbahrxnnisSE7WgFNnG44pGv72oyGaiD2w9gsN9RmEkC2wveCnAGY9mjthMjfxKACBKi6dFfEiaUBwgoEPq9ST"
+    SOL_USDT_ADDRESS: str = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+    SOL_USDC_ADDRESS: str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
 # --- Do not edit anything below this line, or do it, I'm not your mom ----
 defaults = Configuration(autoload=False)
 cfg = Configuration()

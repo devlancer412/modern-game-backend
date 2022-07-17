@@ -3,6 +3,7 @@ from hexbytes import HexBytes
 from web3 import Web3
 from web3.middleware import construct_sign_and_send_raw_middleware
 from web3.auto import w3
+from solana.rpc.api import Client
 
 from config import cfg
 from src.abis.ERC20 import abi as ERC20_abi
@@ -13,6 +14,8 @@ from src.utils.temp_wallets import eth_wallet_list, sol_wallet_list
 web3_eth = Web3(provider=Web3.HTTPProvider(cfg.ETH_RPC_URL))
 web3_eth.middleware_onion.add(construct_sign_and_send_raw_middleware(cfg.ETH_TREASURY_PRIVATE_KEY))
 web3_eth.eth.default_account = cfg.ETH_TREASURY_ADDRESS
+
+solana_client = Client(cfg.SOL_RPC_URL)
 
 def compare_eth_address(address1: str, address2: str) -> bool:
   try:
@@ -35,6 +38,9 @@ def get_transaction_eth_value(tx_hash: str) -> object:
 
 def uint256_to_address(input: str):
     return decode_abi(["address"], bytes(input))[0]
+
+def erc1155_data_dispatch(input: str):
+    return decode_abi(["uint256", "uint256"], bytes(input))
 
 def get_transaction_token_value(tx_hash: str) -> object:
   try:

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from src.models import NFT, DWHistory, Direct, NFTHistory, NFTNote, NFTType, Network, UserBalance
 from src.schemas.user import WalletData
 from config import cfg
-from src.utils.web3 import get_current_gas_price, get_eth_erc20_contract
+from src.utils.web3 import get_current_gas_price, get_eth_erc1155_contract, get_eth_erc20_contract
 from src.database import database
 
 eth = "0x0000000000000000000000000000000000000000"
@@ -33,7 +33,6 @@ async def deposited_eth(wallet: WalletData, amount: int):
   session.close()
 
   print("eth deposit {}:{}".format(wallet.user_id, deposit_amount))
-  wallet.is_using = False
   return 0
 
 async def deposited_eth_stabele_coin(coin:str, wallet: WalletData, amount):
@@ -69,10 +68,9 @@ async def deposited_eth_stabele_coin(coin:str, wallet: WalletData, amount):
   session.close()
 
   print("stable coin deposit {}:{}".format(wallet.user_id, deposit_amount))
-  wallet.is_using = False
   return
 
-def deposited_eth_721nft(address, wallet, id):
+async def deposited_eth_721nft(address, wallet: WalletData, id):
   session: Session = database.get_db_session()
   new_nft = NFT()
   new_nft.network = Network.Ethereum
@@ -90,7 +88,7 @@ def deposited_eth_721nft(address, wallet, id):
 
   new_history = NFTHistory()
   new_history.nft_id = new_nft.id
-  new_history.after_user = wallet.user_id
+  new_history.after_user_id = wallet.user_id
   new_history.note = NFTNote.Deposit
   new_history.price = new_nft.price
 
@@ -98,36 +96,43 @@ def deposited_eth_721nft(address, wallet, id):
   session.commit()
   session.close()
 
-  print("ERC721 NFT deposited to {}:{}-{}", wallet.user_id, address, id)
-  wallet.is_using = False
+  print("ERC721 NFT deposited to {}:{}-{}".format(wallet.user_id, address, id))
   return
 
-def deposited_eth_1155nft(address, wallet, id):
+async def deposited_eth_1155nft(address, wallet: WalletData, data):
+  contract = get_eth_erc1155_contract(address)
+  decimal = contract.functions.decimals().call()
+  if decimal != 0:
+    return
+
   session: Session = database.get_db_session()
-  new_nft = NFT()
-  new_nft.network = Network.Ethereum
-  new_nft.user_id = wallet.user_id
-  new_nft.token_address = address
-  new_nft.token_id = id
-  new_nft.temp_address = wallet.public_key
-  new_nft.nft_type = NFTType.ERC1155
-  # need to calculate nft price
-  new_nft.price = 0
+  id = data[0]
+  number = data[1]
 
-  session.add(new_nft)
-  session.flush()
-  session.refresh(new_nft, attribute_names=['id'])
+  for _ in range(number):
+    new_nft = NFT()
+    new_nft.network = Network.Ethereum
+    new_nft.user_id = wallet.user_id
+    new_nft.token_address = address
+    new_nft.token_id = id
+    new_nft.temp_address = wallet.public_key
+    new_nft.nft_type = NFTType.ERC1155
+    # need to calculate nft price
+    new_nft.price = 0
 
-  new_history = NFTHistory()
-  new_history.nft_id = new_nft.id
-  new_history.after_user = wallet.user_id
-  new_history.note = NFTNote.Deposit
-  new_history.price = new_nft.price
+    session.add(new_nft)
+    session.flush()
+    session.refresh(new_nft, attribute_names=['id'])
 
-  session.add(new_history)
+    new_history = NFTHistory()
+    new_history.nft_id = new_nft.id
+    new_history.after_user_id = wallet.user_id
+    new_history.note = NFTNote.Deposit
+    new_history.price = new_nft.price
+    session.add(new_history)
+
   session.commit()
   session.close()
 
-  print("ERC1155 NFT deposited to {}:{}-{}", wallet.user_id, address, id)
-  wallet.is_using = False
+  print("ERC1155 NFT deposited to {}:{}-{}".format(wallet.user_id, address, id))
   return
