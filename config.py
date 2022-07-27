@@ -23,7 +23,7 @@ class Configuration(ConfigBase):
     JWT_REFRESH_SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
 
     # test in ropsten
-    ETH_RPC_URL: str = "https://ropsten.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161"
+    ETH_RPC_URL: str = "https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161"
     # ETH_RPC_URL: str = "https://rinkeby.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161"
     ETH_TREASURY_ADDRESS: str = "0x5C29Ac1d01aE85Bd93D1Cc1C457c0d4aed46C0AF"
     ETH_TREASURY_PRIVATE_KEY: str = "cc2380168b30452e01321b5d8d810714d37e57e2b035b63c8de5d0624ec56def"
@@ -40,7 +40,11 @@ class Configuration(ConfigBase):
     SOL_TREASURY_PRIVATE_KEY: str = "2vHbahrxnnisSE7WgFNnG44pGv72oyGaiD2w9gsN9RmEkC2wveCnAGY9mjthMjfxKACBKi6dFfEiaUBwgoEPq9ST"
     SOL_USDT_ADDRESS: str = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
     SOL_USDC_ADDRESS: str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+    SOL_SWAP_FEE: str = "6000000"
+
+    OPENSEA_API: str = ""
 
 # --- Do not edit anything below this line, or do it, I'm not your mom ----
 defaults = Configuration(autoload=False)
 cfg = Configuration()
+

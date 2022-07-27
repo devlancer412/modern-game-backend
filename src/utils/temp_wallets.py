@@ -1,4 +1,4 @@
-from bip_utils import *
+from bip_utils import Bip39SeedGenerator, Bip44, Bip44Coins, Bip44Changes, Base58Decoder, Base58Encoder
 from datetime import datetime, timedelta
 
 from src.schemas.user import WalletData

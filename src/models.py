@@ -70,11 +70,19 @@ class Direct(str, Enum):
   Deposit = "DEPOSIT"
   Withdraw = "WITHDRAW"
 
+class DepositMethod(str, Enum):
+  Eth = "ETH"
+  Usdt = "USDT"
+  Usdc = "USDC"
+  Sol = "SOL"
+
 class DWHistory(Base):
   __tablename__ = "dw_history"
   id = Column(Integer, primary_key=True)
   user_id = Column(Integer, ForeignKey('user.id'))
   direct = Column(SAEnum(Direct), nullable=False, default=Direct.Deposit)
+  deposit_method = Column(SAEnum(DepositMethod), nullable=False)
+  tx_hash = Column(String(128), nullable=False)
   amount = Column(Float, nullable=False, default=0)
   created_at = Column(TIMESTAMP, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
@@ -97,9 +105,8 @@ class NFT(Base):
   token_id = Column(String(66), nullable=True)
   price = Column(Float, nullable=False, default=0)
   nft_type = Column(SAEnum(NFTType), nullable=False, default=NFTType.ERC721)
+  deposit_tx_hash = Column(String(128), nullable=False)
   deleted = Column(Boolean, nullable=False, default=False)
-
-  temp_address = Column(String(66), nullable=False)
 
   owner = relationship('User', back_populates='nfts', uselist=False)
   histories = relationship('NFTHistory', back_populates='nft')

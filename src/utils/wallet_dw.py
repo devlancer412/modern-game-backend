@@ -1,7 +1,7 @@
 from uniswap import Uniswap
 from sqlalchemy.orm import Session
 
-from src.models import NFT, DWHistory, Direct, NFTHistory, NFTNote, NFTType, Network, UserBalance
+from src.models import NFT, DWHistory, DepositMethod, Direct, NFTHistory, NFTNote, NFTType, Network, UserBalance
 from src.schemas.user import WalletData
 from config import cfg
 from src.utils.web3 import get_current_gas_price, get_eth_erc1155_contract, get_eth_erc20_contract
@@ -27,6 +27,7 @@ async def deposited_eth(wallet: WalletData, amount: int):
   new_history.user_id = wallet.user_id
   new_history.amount = deposit_amount
   new_history.direct = Direct.Deposit
+  new_history.deposit_method = DepositMethod.Eth
 
   session.add(new_history)
   session.commit()
@@ -35,7 +36,7 @@ async def deposited_eth(wallet: WalletData, amount: int):
   print("eth deposit {}:{}".format(wallet.user_id, deposit_amount))
   return 0
 
-async def deposited_eth_stabele_coin(coin:str, wallet: WalletData, amount):
+async def deposited_eth_stabele_coin(coin:str, wallet: WalletData, amount, hash):
   swap = Uniswap(address=wallet.public_key, private_key=wallet.private_key, version=2, provider=cfg.ETH_RPC_URL)
   fee =  get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
   fee_price = float(swap.get_price_output(coin, eth, fee))
@@ -49,7 +50,12 @@ async def deposited_eth_stabele_coin(coin:str, wallet: WalletData, amount):
   deposit_amount = float(amount - fee_price)/10**decimals
 
   session: Session = database.get_db_session()
+
   try:
+    last_history = list(session.query(DWHistory).filter(DWHistory.tx_hash == hash).first())
+    if len(last_history) == 0:
+      return
+
     balance: UserBalance = session.query(UserBalance).filter(UserBalance.user_id == wallet.user_id).one()
   except Exception as ex:
     print(ex)
@@ -62,77 +68,16 @@ async def deposited_eth_stabele_coin(coin:str, wallet: WalletData, amount):
   new_history.user_id = wallet.user_id
   new_history.amount = deposit_amount
   new_history.direct = Direct.Deposit
+  if coin == cfg.ETH_USDT_ADDRESS:
+    new_history.deposit_method = DepositMethod.Usdt
+  elif coin == cfg.ETH_USDC_ADDRESS:
+    new_history.deposit_method = DepositMethod.Usdc
+
+  new_history.tx_hash = hash
 
   session.add(new_history)
   session.commit()
   session.close()
 
   print("stable coin deposit {}:{}".format(wallet.user_id, deposit_amount))
-  return
-
-async def deposited_eth_721nft(address, wallet: WalletData, id):
-  session: Session = database.get_db_session()
-  new_nft = NFT()
-  new_nft.network = Network.Ethereum
-  new_nft.user_id = wallet.user_id
-  new_nft.token_address = address
-  new_nft.token_id = id
-  new_nft.temp_address = wallet.public_key
-  new_nft.nft_type = NFTType.ERC721
-  # need to calculate nft price
-  new_nft.price = 0
-
-  session.add(new_nft)
-  session.flush()
-  session.refresh(new_nft, attribute_names=['id'])
-
-  new_history = NFTHistory()
-  new_history.nft_id = new_nft.id
-  new_history.after_user_id = wallet.user_id
-  new_history.note = NFTNote.Deposit
-  new_history.price = new_nft.price
-
-  session.add(new_history)
-  session.commit()
-  session.close()
-
-  print("ERC721 NFT deposited to {}:{}-{}".format(wallet.user_id, address, id))
-  return
-
-async def deposited_eth_1155nft(address, wallet: WalletData, data):
-  contract = get_eth_erc1155_contract(address)
-  decimal = contract.functions.decimals().call()
-  if decimal != 0:
-    return
-
-  session: Session = database.get_db_session()
-  id = data[0]
-  number = data[1]
-
-  for _ in range(number):
-    new_nft = NFT()
-    new_nft.network = Network.Ethereum
-    new_nft.user_id = wallet.user_id
-    new_nft.token_address = address
-    new_nft.token_id = id
-    new_nft.temp_address = wallet.public_key
-    new_nft.nft_type = NFTType.ERC1155
-    # need to calculate nft price
-    new_nft.price = 0
-
-    session.add(new_nft)
-    session.flush()
-    session.refresh(new_nft, attribute_names=['id'])
-
-    new_history = NFTHistory()
-    new_history.nft_id = new_nft.id
-    new_history.after_user_id = wallet.user_id
-    new_history.note = NFTNote.Deposit
-    new_history.price = new_nft.price
-    session.add(new_history)
-
-  session.commit()
-  session.close()
-
-  print("ERC1155 NFT deposited to {}:{}-{}".format(wallet.user_id, address, id))
   return

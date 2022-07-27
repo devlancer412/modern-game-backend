@@ -1,9 +1,17 @@
-from eth_abi import decode_abi
+from eth_abi import decode_abi, decode_single
 from hexbytes import HexBytes
 from web3 import Web3
 from web3.middleware import construct_sign_and_send_raw_middleware
 from web3.auto import w3
+
+from spl.token.constants import TOKEN_PROGRAM_ID
+from spl.token.instructions import transfer as transfer_token, transfer_checked, TransferCheckedParams
+
 from solana.rpc.api import Client
+from solana.transaction import Transaction
+from solana.keypair import Keypair
+from solana.publickey import PublicKey
+from solana.system_program import transfer, TransferParams
 
 from config import cfg
 from src.abis.ERC20 import abi as ERC20_abi
@@ -16,6 +24,9 @@ web3_eth.middleware_onion.add(construct_sign_and_send_raw_middleware(cfg.ETH_TRE
 web3_eth.eth.default_account = cfg.ETH_TREASURY_ADDRESS
 
 solana_client = Client(cfg.SOL_RPC_URL)
+
+ETH_ERC1155_TRANSFER_TOPIC = "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62"
+ETH_NORMAL_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
 def compare_eth_address(address1: str, address2: str) -> bool:
   try:
@@ -37,15 +48,17 @@ def get_transaction_eth_value(tx_hash: str) -> object:
     return None
 
 def uint256_to_address(input: str):
-    return decode_abi(["address"], bytes(input))[0]
+    return decode_single("address", HexBytes(input))
 
 def erc1155_data_dispatch(input: str):
-    return decode_abi(["uint256", "uint256"], bytes(input))
+    return decode_abi(["uint256", "uint256"], HexBytes(input))
 
 def get_transaction_token_value(tx_hash: str) -> object:
   try:
     tx = web3_eth.eth.get_transaction_receipt(tx_hash)
-    print()
+
+    if len(tx.logs) == 0:
+      return
 
     return {
       "contract": tx["to"],
@@ -53,6 +66,19 @@ def get_transaction_token_value(tx_hash: str) -> object:
       "to": uint256_to_address(tx.logs[0].topics[2]),
       "value": tx.logs[0].data
     }
+  except Exception as ex:
+    print(ex)
+    return None
+
+def get_transaction_nft_data(tx_hash: str) -> object:
+  try:
+    tx = web3_eth.eth.get_transaction_receipt(tx_hash)
+    transfer_logs = list(filter(lambda log: log.topics[0].hex() == ETH_NORMAL_TRANSFER_TOPIC or log.topics[0].hex() == ETH_ERC1155_TRANSFER_TOPIC , tx.logs)) #and log.topics[2] == cfg.ETH_TREASURY_ADDRESS
+
+    if len(transfer_logs) == 0:
+      return None
+
+    return transfer_logs
   except Exception as ex:
     print(ex)
     return None
@@ -103,9 +129,9 @@ def send_eth_stable_to(token_address: str, wallet: str, amount:int) -> object:
 
   return receipt
 
-def send_eth_erc721_to(from_wallet: str, to_wallet:str, address:str, id: str) -> object:
+def send_eth_erc721_to(to_wallet:str, address:str, id: str) -> object:
   contract_address = Web3.toChecksumAddress(address)
-  from_address = Web3.toChecksumAddress(from_wallet)
+  from_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
   to_address = Web3.toChecksumAddress(to_wallet)
 
   # try:
@@ -122,9 +148,9 @@ def send_eth_erc721_to(from_wallet: str, to_wallet:str, address:str, id: str) ->
 
   return receipt
 
-def send_eth_erc1155_to(from_wallet: str, to_wallet:str, address:str, id: str) -> object:
+def send_eth_erc1155_to(to_wallet:str, address:str, id: str) -> object:
   contract_address = Web3.toChecksumAddress(address)
-  from_address = Web3.toChecksumAddress(from_wallet)
+  from_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
   to_address = Web3.toChecksumAddress(to_wallet)
 
   # try:
@@ -140,3 +166,17 @@ def send_eth_erc1155_to(from_wallet: str, to_wallet:str, address:str, id: str) -
   receipt = wait_transaction_receipt(hash_hex)
 
   return receipt
+
+def send_sol_sol_to(to_wallet: str, amount: float):
+  dist_wallet_key = PublicKey(to_wallet)
+  payer = Keypair.from_secret_key(cfg.SOL_TREASURY_PRIVATE_KEY)
+
+  transaction = Transaction().add(transfer(TransferParams(from_pubkey=payer.public_key, to_pubkey=dist_wallet_key, lamports=amount*10**9)))
+  response = solana_client.send_transaction(transaction, payer)
+  return response.result
+
+def swap_sol_to_stable(from_wallet: str, to_wallet: str, token: str, amount: float):
+  return True
+
+def swap_stable_to_sol(from_wallet: str, to_wallet: str, token: str, amount: float):
+  return True
