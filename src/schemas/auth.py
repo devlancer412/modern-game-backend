@@ -1,9 +1,11 @@
 from pydantic import BaseModel
 
+
 class TokenSchema(BaseModel):
-  access_token: str
-  refresh_token: str
+    access_token: str
+    refresh_token: str
+
 
 class TokenPayload(BaseModel):
-  sub: str
-  exp: int
+    sub: str
+    exp: int

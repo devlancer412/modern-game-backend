@@ -6,8 +6,8 @@ from app.__internal import Function
 from src.database import Base, Database
 from config import cfg
 
-class Init(Function):
 
+class Init(Function):
     def __init__(self, error):
         if cfg.has_unset():
             error(f"Cannot start with unset variables: {cfg.has_unset()}")
@@ -22,8 +22,8 @@ class Init(Function):
         )
         app.add_middleware(SessionMiddleware, secret_key=cfg.JWT_SECRET_KEY)
 
-
         database = Database()
         engine = database.get_db_connection()
+        database.get_db_session()
 
-        Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=engine, checkfirst=True)

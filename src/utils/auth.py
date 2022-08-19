@@ -8,7 +8,7 @@ import string
 
 from web3 import Web3
 from web3.auto import w3
-from eth_account.messages import encode_defunct
+from eth_account.messages import defunct_hash_message
 from base58 import b58decode
 from binascii import unhexlify
 from nacl.signing import VerifyKey
@@ -16,63 +16,71 @@ from nacl.signing import VerifyKey
 from config import cfg
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 30  # 30 minutes
-REFRESH_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
+REFRESH_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 ALGORITHM = "HS256"
 JWT_SECRET_KEY = cfg.JWT_SECRET_KEY
 JWT_REFRESH_SECRET_KEY = cfg.JWT_REFRESH_SECRET_KEY
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
 def get_hashed_password(password: str) -> str:
-	return password_context.hash(password)
+    return password_context.hash(password)
+
 
 def verify_password(password: str, hashed_pass: str) -> bool:
-	return password_context.verify(password, hashed_pass)
+    return password_context.verify(password, hashed_pass)
+
 
 def create_access_token(subject: Union[str, Any], expires_delta: int = None) -> str:
-	if expires_delta is not None:
-		expires_delta = datetime.utcnow() + expires_delta
-	else:
-		expires_delta = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-	
-	to_encode = {"exp": expires_delta, "sub": str(subject)}
-	encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, ALGORITHM)
-	return encoded_jwt
+    if expires_delta is not None:
+        expires_delta = datetime.utcnow() + expires_delta
+    else:
+        expires_delta = datetime.utcnow() + timedelta(
+            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+        )
+
+    to_encode = {"exp": expires_delta, "sub": str(subject)}
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, ALGORITHM)
+    return encoded_jwt
+
 
 def create_refresh_token(subject: Union[str, Any], expires_delta: int = None) -> str:
-	if expires_delta is not None:
-		expires_delta = datetime.utcnow() + expires_delta
-	else:
-		expires_delta = datetime.utcnow() + timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
-	
-	to_encode = {"exp": expires_delta, "sub": str(subject)}
-	encoded_jwt = jwt.encode(to_encode, JWT_REFRESH_SECRET_KEY, ALGORITHM)
-	return encoded_jwt
+    if expires_delta is not None:
+        expires_delta = datetime.utcnow() + expires_delta
+    else:
+        expires_delta = datetime.utcnow() + timedelta(
+            minutes=REFRESH_TOKEN_EXPIRE_MINUTES
+        )
+
+    to_encode = {"exp": expires_delta, "sub": str(subject)}
+    encoded_jwt = jwt.encode(to_encode, JWT_REFRESH_SECRET_KEY, ALGORITHM)
+    return encoded_jwt
+
 
 def generate_accesskey() -> str:
-	chars = string.ascii_uppercase + string.digits
-	return "".join(choices(chars)[0] for _ in range(6))
+    chars = string.ascii_uppercase + string.digits
+    return "".join(choices(chars)[0] for _ in range(6))
 
-def validate_metamask_wallet(address: str, signature: str) -> bool:
-	try:
-		hashed = Web3.solidityKeccak(["address"], [Web3.toChecksumAddress(address)])
-		eth_signed_message_hash = Web3.solidityKeccak(
-				["string", "bytes32"], ["\x19Ethereum Signed Message:\n32", hashed]
-		)
-		message = encode_defunct(eth_signed_message_hash)
-		return w3.eth.account.recover_message(message, signature=signature) == address
-	except Exception as ex:
-		print(ex)
-		return False
+
+def get_signer(message: str, signature: str) -> bool:
+    try:
+        message_hash = defunct_hash_message(text=message)
+        signedAddress = w3.eth.account.recoverHash(message_hash, signature=signature)
+        return signedAddress
+    except Exception as ex:
+        print(ex)
+        return False
+
 
 def validate_phantom_wallet(address: str, signature: str) -> bool:
-	b58_pubkey = b58decode(address)
-	unhexed_signature = unhexlify(signature)
+    b58_pubkey = b58decode(address)
+    unhexed_signature = unhexlify(signature)
 
-	verify_key = VerifyKey(b58_pubkey)
-	signed = address.encode('utf-8')
-	try:
-		return verify_key.verify(signed, unhexed_signature)
-	except Exception as ex:
-		print(ex)
-		return False
+    verify_key = VerifyKey(b58_pubkey)
+    signed = address.encode("utf-8")
+    try:
+        return verify_key.verify(signed, unhexed_signature)
+    except Exception as ex:
+        print(ex)
+        return False
