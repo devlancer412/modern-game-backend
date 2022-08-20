@@ -13,8 +13,8 @@ class EmailUserBase(BaseModel):
 
 
 class WalletUserBase(BaseModel):
-    wallet: str = Field(title="Wallet address", regex="0x[a-zA-Z0-9]{40}")
-    signature: str = Field(title="Singnature", regex="0x[a-z0-9]{130}")
+    wallet: str = Field(title="Wallet address")
+    signature: str = Field(title="Singnature")
 
 
 class AccessKey(BaseModel):

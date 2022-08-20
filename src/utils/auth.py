@@ -9,9 +9,10 @@ import string
 from web3 import Web3
 from web3.auto import w3
 from eth_account.messages import defunct_hash_message
-from base58 import b58decode
+from base58 import b58decode, b58encode
 from binascii import unhexlify
-from nacl.signing import VerifyKey
+from nacl.signing import VerifyKey, SigningKey
+from solana.publickey import PublicKey
 
 from config import cfg
 
@@ -74,13 +75,12 @@ def get_signer(message: str, signature: str) -> bool:
 
 
 def validate_phantom_wallet(address: str, signature: str) -> bool:
-    b58_pubkey = b58decode(address)
-    unhexed_signature = unhexlify(signature)
+    pubkey = bytes(PublicKey(address))
+    msg = bytes("Modern Game", "utf8")
+    signed = bytes(signature, "utf8")
 
-    verify_key = VerifyKey(b58_pubkey)
-    signed = address.encode("utf-8")
     try:
-        return verify_key.verify(signed, unhexed_signature)
+        return VerifyKey(pubkey).verify(smessage=msg, signature=b58decode(signed))
     except Exception as ex:
         print(ex)
         return False
