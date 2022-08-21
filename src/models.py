@@ -42,6 +42,7 @@ class User(Base):
     rollback = Column(Float, nullable=False, default=0)
     deposit_balance = Column(Float, nullable=False, default=0)
     withdraw_balance = Column(Float, nullable=False, default=0)
+    is_privacy = Column(Boolean, default=False)
 
     created_at = Column(
         TIMESTAMP, nullable=False, server_default=text("CURRENT_TIMESTAMP")
@@ -54,7 +55,7 @@ class User(Base):
     deleted = Column(Boolean, default=False)
 
     # relationship with avatar
-    avatar = relationship("AvatarList", foreign_keys="[User.avatar_id]", uselist=False)
+    avatar = relationship("Avatar", foreign_keys="[User.avatar_id]", uselist=False)
     avatar_url = association_proxy("avatar", "url")
     # relationship with access key
     access_key = relationship("UserAccessKey", back_populates="user", uselist=False)
@@ -75,7 +76,7 @@ class User(Base):
     )
 
 
-class AvatarList(Base):
+class Avatar(Base):
     __tablename__ = "avatar"
     id = Column(Integer, primary_key=True)
     url = Column(String(1024), nullable=False)

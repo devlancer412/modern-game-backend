@@ -1,4 +1,5 @@
 from turtle import title
+from xmlrpc.client import boolean
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -17,19 +18,10 @@ class WalletUserBase(BaseModel):
     signature: str = Field(title="Singnature")
 
 
-class AccessKey(BaseModel):
-    id: int
-    is_pending: bool
-    key: str
-
-
-class User(UserBase):
-    id: int
-    deleted: bool
-    access_key: AccessKey
-
-    class Config:
-        orm_mode = True
+class UserUpdateData(BaseModel):
+    name: str = Field(title="User name")
+    avatar: str = Field(title="Avatar url")
+    isPrivacy: bool = (Field(title="Privacy mode"),)
 
 
 class WalletData:

@@ -33,7 +33,7 @@ from src.utils.auth import (
 )
 from src.schemas.user import EmailUserBase, WalletUserBase
 from src.schemas.auth import TokenPayload, TokenSchema
-from src.models import AvatarList, SignMethod, User, UserAccessKey
+from src.models import Avatar, SignMethod, User, UserAccessKey
 from src.dependencies.database_deps import get_db_session
 
 from config import cfg
@@ -327,7 +327,7 @@ class AuthAPI(Function):
             new_access_key.user_id = new_user.id
             session.add(new_access_key)
 
-            avatar = AvatarList()
+            avatar = Avatar()
             avatar.owner_id = new_user.id
             avatar.url = user_data["picture"]
 

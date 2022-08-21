@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
-from operator import and_
+from logging import NullHandler
+from operator import and_, or_
 from typing import Callable
 
 from eth_utils import to_wei
@@ -15,6 +16,7 @@ from src.dependencies.auth_deps import get_current_user_from_oauth
 from src.dependencies.database_deps import get_db_session
 from src.models import (
     NFT,
+    Avatar,
     DWHistory,
     DepositMethod,
     Direct,
@@ -27,7 +29,7 @@ from src.models import (
 from src.schemas.auth import TokenPayload
 
 from config import cfg
-from src.schemas.user import WalletData
+from src.schemas.user import UserUpdateData, WalletData
 from src.utils.temp_wallets import get_eth_deposit_wallet, get_sol_deposit_wallet
 from src.utils.web3 import (
     ETH_ERC1155_TRANSFER_TOPIC,
@@ -65,6 +67,24 @@ class UserAPI(Function):
             responses={404: {"description": "Not found"}},
         )
 
+        @router.get("/avatars", summary="return available avatars")
+        async def get_avatars(
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            avatars = list(
+                session.query(Avatar)
+                .filter(
+                    or_(
+                        Avatar.owner_id == None,
+                        Avatar.owner_id == payload.sub,
+                    )
+                )
+                .add_columns()
+            )
+
+            return avatars
+
         @router.get("/", summary="Get user data")
         async def get_user_data(
             payload: TokenPayload = Depends(get_current_user_from_oauth),
@@ -73,8 +93,14 @@ class UserAPI(Function):
             user: User = (
                 session.query(User)
                 .filter(and_(User.id == payload.sub, User.deleted == False))
-                .one()
+                .first()
             )
+
+            if user is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User doesn't exist",
+                )
 
             return {
                 "name": user.name,
@@ -83,8 +109,49 @@ class UserAPI(Function):
                 "signMethod": user.sign_method,
                 "balance": user.balance,
                 "rollback": user.rollback,
+                "isPrivacy": user.is_privacy,
                 "isPending": user.is_pending,
             }
+
+        @router.post("/", summary="Set user settings")
+        async def set_user_data(
+            data: UserUpdateData,
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            user: User = (
+                session.query(User)
+                .filter(and_(User.id == payload.sub, User.deleted == False))
+                .first()
+            )
+
+            if user is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User doesn't exist",
+                )
+
+            user.name = data.name
+            user.is_privacy = data.isPrivacy
+
+            avatar: Avatar = (
+                session.query(Avatar).filter(Avatar.url == data.avatar).first()
+            )
+
+            if avatar is not None:
+                user.avatar_id = avatar.id
+            else:
+                new_avatar = Avatar()
+                new_avatar.url = data.avatar
+                new_avatar.owner_id = user.id
+
+                session.add(new_avatar)
+                session.flush()
+                session.refresh(new_avatar, attribute_names=["id"])
+
+                user.avatar_id = new_avatar.id
+
+            return True
 
         @router.get(
             "/price/eth/usdt/input",
@@ -214,13 +281,10 @@ class UserAPI(Function):
 
             session.add(new_history)
 
-            user_balance: UserBalance = (
-                session.query(UserBalance)
-                .filter(UserBalance.user_id == payload.sub)
-                .one()
-            )
-            user_balance.balance += received
+            user: User = session.query(User).filter(User.id == payload.sub).first()
+            user.balance += received
 
+            session.commit()
             return new_history
 
         @router.post("/deposit/eth/stable", summary="Deposit stable coin manually")
@@ -279,13 +343,10 @@ class UserAPI(Function):
 
             session.add(new_history)
 
-            user_balance: UserBalance = (
-                session.query(UserBalance)
-                .filter(UserBalance.user_id == payload.sub)
-                .one()
-            )
-            user_balance.balance += received
+            user: User = session.query(User).filter(User.id == payload.sub).first()
+            user.balance += received
 
+            session.commit()
             return new_history
 
         @router.post("/deposit/eth/nft", summary="Deposit stable coin manually")
@@ -379,17 +440,11 @@ class UserAPI(Function):
                     detail="You need to set amount more than 0",
                 )
 
-            user_balance: UserBalance = (
-                session.query(UserBalance)
-                .filter(UserBalance.user_id == payload.sub)
-                .one()
-            )
+            user: User = session.query(User).filter(User.id == payload.sub).first()
 
             fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
             total_eth = (
-                self.uniswap.get_price_input(
-                    eth_usdt, eth, (user_balance.balance) * 10**6
-                )
+                self.uniswap.get_price_input(eth_usdt, eth, (user.balance) * 10**6)
                 - fee
             )
 
@@ -406,8 +461,8 @@ class UserAPI(Function):
                 )
                 / 10**6
             )
-            user_balance -= delta_balance
-            user_balance.withdraw_balance += delta_balance
+            user.balance -= delta_balance
+            user.withdraw_balance += delta_balance
 
             new_history = DWHistory()
             new_history.amount = delta_balance
@@ -436,18 +491,14 @@ class UserAPI(Function):
                     detail="You need to set amount more than 0",
                 )
 
-            user_balance: UserBalance = (
-                session.query(UserBalance)
-                .filter(UserBalance.user_id == payload.sub)
-                .one()
-            )
+            user: User = session.query(User).filter(User.id == payload.sub).first()
 
             fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
             fee_usdt = (
                 float(self.uniswap.get_price_output(eth_usdt, eth, fee)) / 10**6
             )
 
-            if amount + fee_usdt > user_balance.balance:
+            if amount + fee_usdt > user.balance:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Much than real amount",
@@ -463,8 +514,8 @@ class UserAPI(Function):
                 )
 
             delta_balance = amount + fee_usdt
-            user_balance.balance -= delta_balance
-            user_balance.withdraw_balance += delta_balance
+            user.balance -= delta_balance
+            user.withdraw_balance += delta_balance
 
             new_history = DWHistory()
             new_history.amount = delta_balance
@@ -487,18 +538,14 @@ class UserAPI(Function):
                     detail="You need to set amount more than 0",
                 )
 
-            user_balance: UserBalance = (
-                session.query(UserBalance)
-                .filter(UserBalance.user_id == payload.sub)
-                .one()
-            )
+            user: User = session.query(User).filter(User.id == payload.sub).first()
 
             fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
             fee_usdt = (
                 float(self.uniswap.get_price_output(eth_usdc, eth, fee)) / 10**6
             )
 
-            if amount + fee_usdt > user_balance.balance:
+            if amount + fee_usdt > user.balance:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Much than real amount",
@@ -514,8 +561,8 @@ class UserAPI(Function):
                 )
 
             delta_balance = amount + fee_usdt
-            user_balance.balance -= delta_balance
-            user_balance.withdraw_balance += delta_balance
+            user.balance -= delta_balance
+            user.withdraw_balance += delta_balance
 
             new_history = DWHistory()
             new_history.amount = delta_balance
@@ -538,17 +585,11 @@ class UserAPI(Function):
                     detail="You need to set amount more than 0",
                 )
 
-            user_balance: UserBalance = (
-                session.query(UserBalance)
-                .filter(UserBalance.user_id == payload.sub)
-                .one()
-            )
+            user: User = session.query(User).filter(User.id == payload.sub).first()
 
             fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
             total_eth = (
-                self.uniswap.get_price_input(
-                    eth_usdt, eth, (user_balance.balance) * 10**6
-                )
+                self.uniswap.get_price_input(eth_usdt, eth, (user.balance) * 10**6)
                 - fee
             )
 
@@ -565,8 +606,8 @@ class UserAPI(Function):
                 )
                 / 10**6
             )
-            user_balance -= delta_balance
-            user_balance.withdraw_balance += delta_balance
+            user.balance -= delta_balance
+            user.withdraw_balance += delta_balance
 
             new_history = DWHistory()
             new_history.amount = delta_balance
