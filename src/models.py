@@ -74,6 +74,8 @@ class User(Base):
         foreign_keys="[NFTHistory.after_user_id]",
         back_populates="after_user",
     )
+    # relationship with transaction
+    transactions = relationship("DepositTransaction", back_populates="user")
 
 
 class Avatar(Base):
@@ -177,3 +179,19 @@ class NFTHistory(Base):
     after_user = relationship(
         "User", foreign_keys=[after_user_id], back_populates="in_nfts", uselist=False
     )
+
+
+class DepositTransaction(Base):
+    __tablename__ = "deposit_transaction"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("user.id"))
+    transaction_id = Column(String(128), nullable=False)
+    deposit_method = Column(SAEnum(DepositMethod), nullable=False)
+    amount_in = Column(Float, default=0)
+    amount_out = Column(Float, default=0)
+    status = Column(Boolean, default=False)
+    created_at = Column(
+        TIMESTAMP, nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+    user = relationship("User", back_populates="transactions", uselist=False)

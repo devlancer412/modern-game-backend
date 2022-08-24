@@ -4,179 +4,185 @@ from web3 import Web3
 from web3.middleware import construct_sign_and_send_raw_middleware
 from web3.auto import w3
 
-from spl.token.constants import TOKEN_PROGRAM_ID
-from spl.token.instructions import transfer as transfer_token, transfer_checked, TransferCheckedParams
-
-from solana.rpc.api import Client
-from solana.transaction import Transaction
-from solana.keypair import Keypair
-from solana.publickey import PublicKey
-from solana.system_program import transfer, TransferParams
-
 from config import cfg
 from src.abis.ERC20 import abi as ERC20_abi
 from src.abis.ERC721 import abi as ERC721_abi
 from src.abis.ERC1155 import abi as ERC1155_abi
-from src.utils.temp_wallets import eth_wallet_list, sol_wallet_list
 
 web3_eth = Web3(provider=Web3.HTTPProvider(cfg.ETH_RPC_URL))
-web3_eth.middleware_onion.add(construct_sign_and_send_raw_middleware(cfg.ETH_TREASURY_PRIVATE_KEY))
+web3_eth.middleware_onion.add(
+    construct_sign_and_send_raw_middleware(cfg.ETH_TREASURY_PRIVATE_KEY)
+)
 web3_eth.eth.default_account = cfg.ETH_TREASURY_ADDRESS
 
-solana_client = Client(cfg.SOL_RPC_URL)
+ETH_ERC1155_TRANSFER_TOPIC = (
+    "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62"
+)
+ETH_NORMAL_TRANSFER_TOPIC = (
+    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+)
 
-ETH_ERC1155_TRANSFER_TOPIC = "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62"
-ETH_NORMAL_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
 def compare_eth_address(address1: str, address2: str) -> bool:
-  try:
-    return address1.lower() == address2.lower()
-  except:
-    return False
+    try:
+        return address1.lower() == address2.lower()
+    except:
+        return False
+
 
 def get_transaction_eth_value(tx_hash: str) -> object:
-  try:
-    tx = web3_eth.eth.get_transaction(tx_hash)
+    try:
+        tx = web3_eth.eth.get_transaction(tx_hash)
 
-    return {
-      "from": tx['from'],
-      "to": tx['to'],
-      "value": tx['value']
-    }
-  except Exception as ex:
-    print(ex)
-    return None
+        return {"from": tx["from"], "to": tx["to"], "value": tx["value"]}
+    except Exception as ex:
+        print(ex)
+        return None
+
 
 def uint256_to_address(input: str):
     return decode_single("address", HexBytes(input))
 
+
 def erc1155_data_dispatch(input: str):
     return decode_abi(["uint256", "uint256"], HexBytes(input))
 
+
 def get_transaction_token_value(tx_hash: str) -> object:
-  try:
-    tx = web3_eth.eth.get_transaction_receipt(tx_hash)
+    try:
+        tx = web3_eth.eth.get_transaction_receipt(tx_hash)
 
-    if len(tx.logs) == 0:
-      return
+        if len(tx.logs) == 0:
+            return
 
-    return {
-      "contract": tx["to"],
-      "from": uint256_to_address(tx.logs[0].topics[1]),
-      "to": uint256_to_address(tx.logs[0].topics[2]),
-      "value": tx.logs[0].data
-    }
-  except Exception as ex:
-    print(ex)
-    return None
+        return {
+            "contract": tx["to"],
+            "from": uint256_to_address(tx.logs[0].topics[1]),
+            "to": uint256_to_address(tx.logs[0].topics[2]),
+            "value": tx.logs[0].data,
+        }
+    except Exception as ex:
+        print(ex)
+        return None
+
 
 def get_transaction_nft_data(tx_hash: str) -> object:
-  try:
-    tx = web3_eth.eth.get_transaction_receipt(tx_hash)
-    transfer_logs = list(filter(lambda log: log.topics[0].hex() == ETH_NORMAL_TRANSFER_TOPIC or log.topics[0].hex() == ETH_ERC1155_TRANSFER_TOPIC , tx.logs)) #and log.topics[2] == cfg.ETH_TREASURY_ADDRESS
+    try:
+        tx = web3_eth.eth.get_transaction_receipt(tx_hash)
+        transfer_logs = list(
+            filter(
+                lambda log: log.topics[0].hex() == ETH_NORMAL_TRANSFER_TOPIC
+                or log.topics[0].hex() == ETH_ERC1155_TRANSFER_TOPIC,
+                tx.logs,
+            )
+        )  # and log.topics[2] == cfg.ETH_TREASURY_ADDRESS
 
-    if len(transfer_logs) == 0:
-      return None
+        if len(transfer_logs) == 0:
+            return None
 
-    return transfer_logs
-  except Exception as ex:
-    print(ex)
-    return None
+        return transfer_logs
+    except Exception as ex:
+        print(ex)
+        return None
+
 
 def wait_transaction_receipt(tx_hash: HexBytes) -> object:
-  return web3_eth.eth.wait_for_transaction_receipt(tx_hash)
+    return web3_eth.eth.wait_for_transaction_receipt(tx_hash)
+
 
 def get_current_gas_price() -> int:
-  return web3_eth.eth._gas_price()
+    return web3_eth.eth._gas_price()
+
 
 def get_eth_erc20_contract(coin_address: str) -> object:
-  contract_address = Web3.toChecksumAddress(coin_address)
+    contract_address = Web3.toChecksumAddress(coin_address)
 
-  contract = web3_eth.eth.contract(contract_address, abi=ERC20_abi)
-  return contract
+    contract = web3_eth.eth.contract(contract_address, abi=ERC20_abi)
+    return contract
+
 
 def get_eth_erc721_contract(address: str) -> object:
-  contract_address = Web3.toChecksumAddress(address)
+    contract_address = Web3.toChecksumAddress(address)
 
-  contract = web3_eth.eth.contract(contract_address, abi=ERC721_abi)
-  return contract
+    contract = web3_eth.eth.contract(contract_address, abi=ERC721_abi)
+    return contract
+
 
 def get_eth_erc1155_contract(address: str) -> object:
-  contract_address = Web3.toChecksumAddress(address)
+    contract_address = Web3.toChecksumAddress(address)
 
-  contract = web3_eth.eth.contract(contract_address, abi=ERC1155_abi)
-  return contract
+    contract = web3_eth.eth.contract(contract_address, abi=ERC1155_abi)
+    return contract
 
-def send_eth_stable_to(token_address: str, wallet: str, amount:int) -> object:
-  contract_address = Web3.toChecksumAddress(token_address)
-  treasury_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
-  wallet_address = Web3.toChecksumAddress(wallet)
 
-  # try:
-  contract = web3_eth.eth.contract(contract_address, abi=ERC20_abi)
-  decimal = contract.functions.decimals().call()
+def send_eth_stable_to(token_address: str, wallet: str, amount: int) -> object:
+    contract_address = Web3.toChecksumAddress(token_address)
+    treasury_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
+    wallet_address = Web3.toChecksumAddress(wallet)
 
-  amount_wei = int(amount * 10 ** decimal)
-  transaction = contract.functions.transfer(wallet_address, amount_wei).buildTransaction({
-    'type': '0x2',  # optional - defaults to '0x2' when dynamic fee transaction params are present
-    'from': treasury_address,  # optional if w3.eth.default_account was set with acct.address
-    'maxFeePerGas': 2000000000,  # required for dynamic fee transactions
-    'maxPriorityFeePerGas': 1000000000,  # required for dynamic fee transactions
-  })
+    # try:
+    contract = web3_eth.eth.contract(contract_address, abi=ERC20_abi)
+    decimal = contract.functions.decimals().call()
 
-  hash_hex = web3_eth.eth.send_transaction(transaction)
-  receipt = wait_transaction_receipt(hash_hex)
+    amount_wei = int(amount * 10**decimal)
+    transaction = contract.functions.transfer(
+        wallet_address, amount_wei
+    ).buildTransaction(
+        {
+            "type": "0x2",  # optional - defaults to '0x2' when dynamic fee transaction params are present
+            "from": treasury_address,  # optional if w3.eth.default_account was set with acct.address
+            "maxFeePerGas": 2000000000,  # required for dynamic fee transactions
+            "maxPriorityFeePerGas": 1000000000,  # required for dynamic fee transactions
+        }
+    )
 
-  return receipt
+    hash_hex = web3_eth.eth.send_transaction(transaction)
+    receipt = wait_transaction_receipt(hash_hex)
 
-def send_eth_erc721_to(to_wallet:str, address:str, id: str) -> object:
-  contract_address = Web3.toChecksumAddress(address)
-  from_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
-  to_address = Web3.toChecksumAddress(to_wallet)
+    return receipt
 
-  # try:
-  contract = get_eth_erc721_contract(contract_address)
-  transaction = contract.functions.transfer(to_address, id).buildTransaction({
-    'type': '0x2',  # optional - defaults to '0x2' when dynamic fee transaction params are present
-    'from': from_address,  # optional if w3.eth.default_account was set with acct.address
-    'maxFeePerGas': 2000000000,  # required for dynamic fee transactions
-    'maxPriorityFeePerGas': 1000000000,  # required for dynamic fee transactions
-  })
 
-  hash_hex = web3_eth.eth.send_transaction(transaction)
-  receipt = wait_transaction_receipt(hash_hex)
+def send_eth_erc721_to(to_wallet: str, address: str, id: str) -> object:
+    contract_address = Web3.toChecksumAddress(address)
+    from_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
+    to_address = Web3.toChecksumAddress(to_wallet)
 
-  return receipt
+    # try:
+    contract = get_eth_erc721_contract(contract_address)
+    transaction = contract.functions.transfer(to_address, id).buildTransaction(
+        {
+            "type": "0x2",  # optional - defaults to '0x2' when dynamic fee transaction params are present
+            "from": from_address,  # optional if w3.eth.default_account was set with acct.address
+            "maxFeePerGas": 2000000000,  # required for dynamic fee transactions
+            "maxPriorityFeePerGas": 1000000000,  # required for dynamic fee transactions
+        }
+    )
 
-def send_eth_erc1155_to(to_wallet:str, address:str, id: str) -> object:
-  contract_address = Web3.toChecksumAddress(address)
-  from_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
-  to_address = Web3.toChecksumAddress(to_wallet)
+    hash_hex = web3_eth.eth.send_transaction(transaction)
+    receipt = wait_transaction_receipt(hash_hex)
 
-  # try:
-  contract = get_eth_erc1155_contract(contract_address)
-  transaction = contract.functions.transfer(from_address, to_address, id).buildTransaction({
-    'type': '0x2',  # optional - defaults to '0x2' when dynamic fee transaction params are present
-    'from': from_address,  # optional if w3.eth.default_account was set with acct.address
-    'maxFeePerGas': 2000000000,  # required for dynamic fee transactions
-    'maxPriorityFeePerGas': 1000000000,  # required for dynamic fee transactions
-  })
+    return receipt
 
-  hash_hex = web3_eth.eth.send_transaction(transaction)
-  receipt = wait_transaction_receipt(hash_hex)
 
-  return receipt
+def send_eth_erc1155_to(to_wallet: str, address: str, id: str) -> object:
+    contract_address = Web3.toChecksumAddress(address)
+    from_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
+    to_address = Web3.toChecksumAddress(to_wallet)
 
-def send_sol_sol_to(to_wallet: str, amount: float):
-  dist_wallet_key = PublicKey(to_wallet)
-  payer = Keypair.from_secret_key(cfg.SOL_TREASURY_PRIVATE_KEY)
+    # try:
+    contract = get_eth_erc1155_contract(contract_address)
+    transaction = contract.functions.transfer(
+        from_address, to_address, id
+    ).buildTransaction(
+        {
+            "type": "0x2",  # optional - defaults to '0x2' when dynamic fee transaction params are present
+            "from": from_address,  # optional if w3.eth.default_account was set with acct.address
+            "maxFeePerGas": 2000000000,  # required for dynamic fee transactions
+            "maxPriorityFeePerGas": 1000000000,  # required for dynamic fee transactions
+        }
+    )
 
-  transaction = Transaction().add(transfer(TransferParams(from_pubkey=payer.public_key, to_pubkey=dist_wallet_key, lamports=amount*10**9)))
-  response = solana_client.send_transaction(transaction, payer)
-  return response.result
+    hash_hex = web3_eth.eth.send_transaction(transaction)
+    receipt = wait_transaction_receipt(hash_hex)
 
-def swap_sol_to_stable(from_wallet: str, to_wallet: str, token: str, amount: float):
-  return True
-
-def swap_stable_to_sol(from_wallet: str, to_wallet: str, token: str, amount: float):
-  return True
+    return receipt
