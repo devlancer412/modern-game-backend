@@ -37,6 +37,8 @@ class Configuration(ConfigBase):
     SOL_TREASURY_ADDRESS: str = "4kb8kG8NjqCjgim7DpGC3YWDPY4B5Y4fbFKNeibcPCpo"
     SOL_TREASURY_PRIVATE_KEY: str = "65ozUBVMwsGWLr3K7T8rnHcffvHvb1akYzeQGsMfhTZ1vkArtpsa3qLbTbpA4om1Ar8fPaqPzHW1Sn4oHo4vy6kX"
 
+    ETH_USDT_ADDRESS: str = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+
     OPENSEA_API: str = "acc245a0e1724ee1b2aa7849a3da9b63"
 
 

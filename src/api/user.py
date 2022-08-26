@@ -15,8 +15,9 @@ from src.dependencies.auth_deps import get_current_user_from_oauth
 from src.dependencies.database_deps import get_db_session
 from src.models import (
     Avatar,
-    DepositMethod,
-    DepositTransaction,
+    DWMethod,
+    Direct,
+    Transaction,
     User,
 )
 from src.schemas.auth import TokenPayload
@@ -26,6 +27,8 @@ from src.schemas.user import UserUpdateData
 
 from src.changenow_api.client import api_wrapper as cnio_api
 from opensea import OpenseaAPI
+
+from src.utils.web3 import send_eth_stable_to
 
 
 class UserAPI(Function):
@@ -301,6 +304,137 @@ class UserAPI(Function):
 
             return data["summary"]["estimatedAmount"]
 
+        @router.get(
+            "/price/usdt/eth/input",
+            summary="Returns the amount of USDT you get for exact ETH",
+        )
+        async def get_price_usdt_eth_input(amount: float) -> float:
+            try:
+                url = "https://vip-api.changenow.io/v1.2/exchange/estimate?fromCurrency=usdt&fromNetwork=eth&fromAmount={}&toCurrency=eth&toNetwork=eth&type=direct".format(
+                    amount
+                )
+                response = requests.get(url)
+
+            except Exception as ex:
+                print(ex)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Something went wrong in server side",
+                )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invaild access token",
+                )
+
+            data = json.loads(response.content.decode("utf-8"))
+
+            if data["summary"]["estimatedAmount"] == None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Too low amount"
+                )
+
+            return data["summary"]["estimatedAmount"]
+
+        @router.get(
+            "/price/usdt/eth/output",
+            summary="Returns the amount of ETH need to deposit for exact USDT",
+        )
+        async def get_price_usdt_eth_output(amount: float) -> float:
+            try:
+                url = "https://vip-api.changenow.io/v1.2/exchange/estimate?fromCurrency=usdt&fromNetwork=eth&toAmount={}&toCurrency=eth&toNetwork=eth&flow=fixed-rate&type=reverse".format(
+                    amount
+                )
+                response = requests.get(url)
+
+            except Exception as ex:
+                print(ex)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Something went wrong in server side",
+                )
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invaild access token",
+                )
+
+            data = json.loads(response.content.decode("utf-8"))
+
+            if data["summary"]["estimatedAmount"] == None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Too low amount"
+                )
+            return data["summary"]["estimatedAmount"]
+
+        @router.get(
+            "/price/usdt/sol/input",
+            summary="Returns the amount of USDT you get for exact SOL",
+        )
+        async def get_price_usdt_sol_input(amount: float) -> float:
+            try:
+                url = "https://vip-api.changenow.io/v1.2/exchange/estimate?fromCurrency=usdt&fromNetwork=eth&fromAmount={}&toCurrency=sol&toNetwork=sol&type=direct".format(
+                    amount
+                )
+                response = requests.get(url)
+
+            except Exception as ex:
+                print(ex)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Something went wrong in server side",
+                )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invaild access token",
+                )
+
+            data = json.loads(response.content.decode("utf-8"))
+
+            if data["summary"]["estimatedAmount"] == None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Too low amount"
+                )
+
+            return data["summary"]["estimatedAmount"]
+
+        @router.get(
+            "/price/usdt/sol/output",
+            summary="Returns the amount of SOL need to deposit for exact USDT",
+        )
+        async def get_price_usdt_sol_output(amount: float) -> float:
+            try:
+                url = "https://vip-api.changenow.io/v1.2/exchange/estimate?fromCurrency=usdt&fromNetwork=eth&toCurrency=sol&toNetwork=sol&toAmount={}&flow=fixed-rate&type=reverse".format(
+                    amount
+                )
+                print(url)
+                response = requests.get(url)
+
+            except Exception as ex:
+                print(ex)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Something went wrong in server side",
+                )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invaild access token",
+                )
+
+            data = json.loads(response.content.decode("utf-8"))
+
+            if data["summary"]["estimatedAmount"] == None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Too low amount"
+                )
+
+            return data["summary"]["estimatedAmount"]
+
         @router.get("/deposit_wallet/eth", summary="Return deposit wallet data")
         async def deposit_eth(
             amount: float,
@@ -321,14 +455,13 @@ class UserAPI(Function):
                 amount=amount,
             )
 
-            transaction = DepositTransaction()
+            transaction = Transaction()
             transaction.user_id = payload.sub
             transaction.amount_in = amount
             transaction.amount_out = response["amount"]
-            transaction.deposit_method = DepositMethod.Eth
+            transaction.method = DWMethod.Eth
             transaction.transaction_id = response["id"]
 
-            print(response)
             session.add(transaction)
 
             return response["payinAddress"]
@@ -353,17 +486,55 @@ class UserAPI(Function):
                 amount=amount,
             )
 
-            transaction = DepositTransaction()
+            transaction = Transaction()
             transaction.user_id = payload.sub
             transaction.amount_in = amount
             transaction.amount_out = response["amount"]
-            transaction.deposit_method = DepositMethod.Sol
+            transaction.method = DWMethod.Sol
             transaction.transaction_id = response["id"]
 
-            print(response)
             session.add(transaction)
 
             return response["payinAddress"]
+
+        @router.post("/withdraw/eth", summary="Withdraw crypto with eth")
+        async def withdraw_eth(
+            amount: float,
+            address: str = Query(regex="0x[a-zA-Z0-9]{40}"),
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            if amount == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Amount must be more than 0",
+                )
+            response = cnio_api(
+                "CREATE_TX",
+                api_key=cfg.CN_API_KEY,
+                from_ticker="usdterc20",
+                to_ticker="eth",
+                address=address,
+                amount=amount,
+            )
+
+            send_eth_stable_to(cfg.ETH_USDT_ADDRESS, response["payinAddress"], amount)
+
+            transaction = Transaction()
+            transaction.user_id = payload.sub
+            transaction.amount_in = amount
+            transaction.amount_out = response["amount"]
+            transaction.method = DWMethod.Eth
+            transaction.direct = Direct.Withdraw
+            transaction.transaction_id = response["id"]
+
+            session.add(transaction)
+
+            user: User = session.query(User).filter(User.id == payload.sub).one()
+            user.balance -= amount
+            user.withdraw_balance += amount
+
+            return
 
         @router.get("/records", summary="Return all records of user")
         async def get_records(
@@ -373,8 +544,8 @@ class UserAPI(Function):
             session: Session = Depends(get_db_session),
         ):
             records = list(
-                session.query(DepositTransaction)
-                .filter(DepositTransaction.user_id == payload.sub)
+                session.query(Transaction)
+                .filter(Transaction.user_id == payload.sub)
                 .offset(offset)
                 .limit(count)
             )
@@ -424,8 +595,10 @@ class UserAPI(Function):
             payload: TokenPayload = Depends(get_current_user_from_oauth),
             session: Session = Depends(get_db_session),
         ):
-            url = "https://api-mainnet.magiceden.dev/v2/wallets/{}/tokens".format(
-                address
+            url = (
+                "https://api-mainnet.magiceden.dev/v2/wallets/{}/tokens?limit=4".format(
+                    address
+                )
             )
 
             try:
@@ -538,7 +711,7 @@ class UserAPI(Function):
         #     new_history.tx_hash = tx_hash
         #     new_history.user_id = payload.sub
         #     new_history.direct = Direct.Deposit
-        #     new_history.deposit_method = DepositMethod.Eth
+        #     new_history.deposit_method = DWMethod.Eth
         #     new_history.amount = received
 
         #     session.add(new_history)
@@ -597,9 +770,9 @@ class UserAPI(Function):
         #     new_history.direct = Direct.Deposit
 
         #     if tx_data["contract"] == cfg.ETH_USDT_ADDRESS:
-        #         new_history.deposit_method = DepositMethod.Usdt
+        #         new_history.deposit_method = DWMethod.Usdt
         #     elif tx_data["contract"] == cfg.ETH_USDC_ADDRESS:
-        #         new_history.deposit_method = DepositMethod.Usdc
+        #         new_history.deposit_method = DWMethod.Usdc
 
         #     new_history.amount = received
 

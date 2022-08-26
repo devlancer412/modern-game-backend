@@ -60,8 +60,6 @@ class User(Base):
     # relationship with access key
     access_key = relationship("UserAccessKey", back_populates="user", uselist=False)
     is_pending = association_proxy("access_key", "is_pending")
-    # relationship with history data
-    dw_histories = relationship("DWHistory", back_populates="user")
     # relationship with nfts
     nfts = relationship("NFT", back_populates="owner")
     out_nfts = relationship(
@@ -75,7 +73,7 @@ class User(Base):
         back_populates="after_user",
     )
     # relationship with transaction
-    transactions = relationship("DepositTransaction", back_populates="user")
+    transactions = relationship("Transaction", back_populates="user")
 
 
 class Avatar(Base):
@@ -98,33 +96,6 @@ class UserAccessKey(Base):
     )
 
     user = relationship("User", back_populates="access_key", uselist=False)
-
-
-class Direct(str, Enum):
-    Deposit = "DEPOSIT"
-    Withdraw = "WITHDRAW"
-
-
-class DepositMethod(str, Enum):
-    Eth = "ETH"
-    Usdt = "USDT"
-    Usdc = "USDC"
-    Sol = "SOL"
-
-
-class DWHistory(Base):
-    __tablename__ = "dw_history"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("user.id"))
-    direct = Column(SAEnum(Direct), nullable=False, default=Direct.Deposit)
-    deposit_method = Column(SAEnum(DepositMethod), nullable=False)
-    tx_hash = Column(String(128), nullable=False)
-    amount = Column(Float, nullable=False, default=0)
-    created_at = Column(
-        TIMESTAMP, nullable=False, server_default=text("CURRENT_TIMESTAMP")
-    )
-
-    user = relationship("User", back_populates="dw_histories", uselist=False)
 
 
 class Network(str, Enum):
@@ -181,15 +152,28 @@ class NFTHistory(Base):
     )
 
 
-class DepositTransaction(Base):
-    __tablename__ = "deposit_transaction"
+class DWMethod(str, Enum):
+    Eth = "ETH"
+    Usdt = "USDT"
+    Usdc = "USDC"
+    Sol = "SOL"
+
+
+class Direct(str, Enum):
+    Deposit = "DEPOSIT"
+    Withdraw = "WITHDRAW"
+
+
+class Transaction(Base):
+    __tablename__ = "transaction"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("user.id"))
     transaction_id = Column(String(128), nullable=False)
-    deposit_method = Column(SAEnum(DepositMethod), nullable=False)
+    method = Column(SAEnum(DWMethod), nullable=False)
+    direct = Column(SAEnum(Direct), nullable=False, default=Direct.Deposit)
     amount_in = Column(Float, default=0)
     amount_out = Column(Float, default=0)
-    status = Column(Boolean, default=False)
+    status = Column(String(16), default="waiting")
     created_at = Column(
         TIMESTAMP, nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )

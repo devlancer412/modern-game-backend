@@ -86,7 +86,7 @@ def get_transaction_nft_data(tx_hash: str) -> object:
         return None
 
 
-def wait_transaction_receipt(tx_hash: HexBytes) -> object:
+async def wait_transaction_receipt(tx_hash: HexBytes) -> object:
     return web3_eth.eth.wait_for_transaction_receipt(tx_hash)
 
 
@@ -115,7 +115,7 @@ def get_eth_erc1155_contract(address: str) -> object:
     return contract
 
 
-def send_eth_stable_to(token_address: str, wallet: str, amount: int) -> object:
+async def send_eth_stable_to(token_address: str, wallet: str, amount: int) -> object:
     contract_address = Web3.toChecksumAddress(token_address)
     treasury_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
     wallet_address = Web3.toChecksumAddress(wallet)
