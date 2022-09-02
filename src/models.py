@@ -113,11 +113,12 @@ class NFT(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("user.id"))
     network = Column(SAEnum(Network), nullable=False, default=Network.Ethereum)
+    name = Column(String(512))
     token_address = Column(String(66), nullable=False)
     token_id = Column(String(66), nullable=True)
+    image_url = Column(String(1024), default="")
     price = Column(Float, nullable=False, default=0)
     nft_type = Column(SAEnum(NFTType), nullable=False, default=NFTType.ERC721)
-    deposit_tx_hash = Column(String(128), nullable=False)
     deleted = Column(Boolean, nullable=False, default=False)
 
     owner = relationship("User", back_populates="nfts", uselist=False)
@@ -139,6 +140,7 @@ class NFTHistory(Base):
     after_user_id = Column(Integer, ForeignKey("user.id"), nullable=True)
     price = Column(Float, nullable=False, default=0)
     note = Column(SAEnum(NFTNote), nullable=False)
+    transaction_hash = Column(String(128), nullable=True)
     created_at = Column(
         TIMESTAMP, nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )

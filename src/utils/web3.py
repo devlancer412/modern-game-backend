@@ -1,6 +1,6 @@
 from eth_abi import decode_abi, decode_single
 from hexbytes import HexBytes
-from web3 import Web3
+from web3 import Web3, Account
 from web3.middleware import construct_sign_and_send_raw_middleware
 from web3.auto import w3
 
@@ -10,6 +10,7 @@ from src.abis.ERC721 import abi as ERC721_abi
 from src.abis.ERC1155 import abi as ERC1155_abi
 
 web3_eth = Web3(provider=Web3.HTTPProvider(cfg.ETH_RPC_URL))
+
 web3_eth.middleware_onion.add(
     construct_sign_and_send_raw_middleware(cfg.ETH_TREASURY_PRIVATE_KEY)
 )
@@ -86,7 +87,7 @@ def get_transaction_nft_data(tx_hash: str) -> object:
         return None
 
 
-async def wait_transaction_receipt(tx_hash: HexBytes) -> object:
+def wait_transaction_receipt(tx_hash: HexBytes) -> object:
     return web3_eth.eth.wait_for_transaction_receipt(tx_hash)
 
 
@@ -115,9 +116,8 @@ def get_eth_erc1155_contract(address: str) -> object:
     return contract
 
 
-async def send_eth_stable_to(token_address: str, wallet: str, amount: int) -> object:
+def send_eth_stable_to(token_address: str, wallet: str, amount: int) -> object:
     contract_address = Web3.toChecksumAddress(token_address)
-    treasury_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
     wallet_address = Web3.toChecksumAddress(wallet)
 
     # try:
@@ -129,10 +129,9 @@ async def send_eth_stable_to(token_address: str, wallet: str, amount: int) -> ob
         wallet_address, amount_wei
     ).buildTransaction(
         {
-            "type": "0x2",  # optional - defaults to '0x2' when dynamic fee transaction params are present
-            "from": treasury_address,  # optional if w3.eth.default_account was set with acct.address
-            "maxFeePerGas": 2000000000,  # required for dynamic fee transactions
-            "maxPriorityFeePerGas": 1000000000,  # required for dynamic fee transactions
+            "from": web3_eth.eth.default_account,
+            "nonce": web3_eth.eth.getTransactionCount(web3_eth.eth.default_account),
+            "gas": cfg.ETH_MAX_FEE,
         }
     )
 
@@ -144,17 +143,17 @@ async def send_eth_stable_to(token_address: str, wallet: str, amount: int) -> ob
 
 def send_eth_erc721_to(to_wallet: str, address: str, id: str) -> object:
     contract_address = Web3.toChecksumAddress(address)
-    from_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
     to_address = Web3.toChecksumAddress(to_wallet)
 
     # try:
     contract = get_eth_erc721_contract(contract_address)
-    transaction = contract.functions.transfer(to_address, id).buildTransaction(
+    transaction = contract.functions.transferFrom(
+        web3_eth.eth.default_account, to_address, id
+    ).buildTransaction(
         {
-            "type": "0x2",  # optional - defaults to '0x2' when dynamic fee transaction params are present
-            "from": from_address,  # optional if w3.eth.default_account was set with acct.address
-            "maxFeePerGas": 2000000000,  # required for dynamic fee transactions
-            "maxPriorityFeePerGas": 1000000000,  # required for dynamic fee transactions
+            "from": web3_eth.eth.default_account,
+            "nonce": web3_eth.eth.getTransactionCount(web3_eth.eth.default_account),
+            "gas": cfg.ETH_MAX_FEE,
         }
     )
 
@@ -166,19 +165,17 @@ def send_eth_erc721_to(to_wallet: str, address: str, id: str) -> object:
 
 def send_eth_erc1155_to(to_wallet: str, address: str, id: str) -> object:
     contract_address = Web3.toChecksumAddress(address)
-    from_address = Web3.toChecksumAddress(cfg.ETH_TREASURY_ADDRESS)
     to_address = Web3.toChecksumAddress(to_wallet)
 
     # try:
     contract = get_eth_erc1155_contract(contract_address)
-    transaction = contract.functions.transfer(
-        from_address, to_address, id
+    transaction = contract.functions.safeTransferFrom(
+        web3_eth.eth.default_account, to_address, to_address, id, 1, ""
     ).buildTransaction(
         {
-            "type": "0x2",  # optional - defaults to '0x2' when dynamic fee transaction params are present
-            "from": from_address,  # optional if w3.eth.default_account was set with acct.address
-            "maxFeePerGas": 2000000000,  # required for dynamic fee transactions
-            "maxPriorityFeePerGas": 1000000000,  # required for dynamic fee transactions
+            "from": web3_eth.eth.default_account,
+            "nonce": web3_eth.eth.getTransactionCount(web3_eth.eth.default_account),
+            "gas": cfg.ETH_MAX_FEE,
         }
     )
 

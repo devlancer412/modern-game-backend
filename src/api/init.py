@@ -5,7 +5,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.__internal import Function
 from src.database import Base, Database
 from config import cfg
-from src.utils.background_transaction_filter import create_transacion_filter
 
 
 class Init(Function):
@@ -28,5 +27,3 @@ class Init(Function):
         database.get_db_session()
 
         Base.metadata.create_all(bind=engine, checkfirst=True)
-
-        create_transacion_filter()

@@ -34,6 +34,9 @@ class Configuration(ConfigBase):
     ETH_TREASURY_PRIVATE_KEY: str = (
         "cc2380168b30452e01321b5d8d810714d37e57e2b035b63c8de5d0624ec56def"
     )
+    ETH_MAX_FEE: int = 30000
+
+    SOL_RPC_URL: str = "https://broken-broken-frost.solana-mainnet.quiknode.pro/9e6fcc4860ba30e382a6be3ccbe1455348fc81cb/"
     SOL_TREASURY_ADDRESS: str = "4kb8kG8NjqCjgim7DpGC3YWDPY4B5Y4fbFKNeibcPCpo"
     SOL_TREASURY_PRIVATE_KEY: str = "65ozUBVMwsGWLr3K7T8rnHcffvHvb1akYzeQGsMfhTZ1vkArtpsa3qLbTbpA4om1Ar8fPaqPzHW1Sn4oHo4vy6kX"
 

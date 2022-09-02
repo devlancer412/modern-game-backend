@@ -14,9 +14,14 @@ import json
 from src.dependencies.auth_deps import get_current_user_from_oauth
 from src.dependencies.database_deps import get_db_session
 from src.models import (
+    NFT,
     Avatar,
     DWMethod,
     Direct,
+    NFTHistory,
+    NFTNote,
+    NFTType,
+    Network,
     Transaction,
     User,
 )
@@ -28,7 +33,18 @@ from src.schemas.user import UserUpdateData
 from src.changenow_api.client import api_wrapper as cnio_api
 from opensea import OpenseaAPI
 
-from src.utils.web3 import send_eth_stable_to
+from src.utils.web3 import (
+    ETH_ERC1155_TRANSFER_TOPIC,
+    compare_eth_address,
+    erc1155_data_dispatch,
+    get_current_gas_price,
+    get_transaction_nft_data,
+    send_eth_erc1155_to,
+    send_eth_erc721_to,
+    send_eth_stable_to,
+    wait_transaction_receipt,
+)
+from src.celery import dispatch_transaction
 
 
 class UserAPI(Function):
@@ -309,6 +325,15 @@ class UserAPI(Function):
             summary="Returns the amount of USDT you get for exact ETH",
         )
         async def get_price_usdt_eth_input(amount: float) -> float:
+
+            fee = (
+                get_current_gas_price()
+                * int(cfg.ETH_MAX_FEE)
+                / 10**18
+                * (await get_price_eth())
+            )
+
+            amount -= fee
             try:
                 url = "https://vip-api.changenow.io/v1.2/exchange/estimate?fromCurrency=usdt&fromNetwork=eth&fromAmount={}&toCurrency=eth&toNetwork=eth&type=direct".format(
                     amount
@@ -342,6 +367,14 @@ class UserAPI(Function):
             summary="Returns the amount of ETH need to deposit for exact USDT",
         )
         async def get_price_usdt_eth_output(amount: float) -> float:
+
+            fee = (
+                get_current_gas_price()
+                * int(cfg.ETH_MAX_FEE)
+                / 10**18
+                * (await get_price_eth())
+            )
+
             try:
                 url = "https://vip-api.changenow.io/v1.2/exchange/estimate?fromCurrency=usdt&fromNetwork=eth&toAmount={}&toCurrency=eth&toNetwork=eth&flow=fixed-rate&type=reverse".format(
                     amount
@@ -366,13 +399,22 @@ class UserAPI(Function):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST, detail="Too low amount"
                 )
-            return data["summary"]["estimatedAmount"]
+            return data["summary"]["estimatedAmount"] + fee
 
         @router.get(
             "/price/usdt/sol/input",
             summary="Returns the amount of USDT you get for exact SOL",
         )
         async def get_price_usdt_sol_input(amount: float) -> float:
+
+            fee = (
+                get_current_gas_price()
+                * int(cfg.ETH_MAX_FEE)
+                / 10**18
+                * (await get_price_eth())
+            )
+
+            amount -= fee
             try:
                 url = "https://vip-api.changenow.io/v1.2/exchange/estimate?fromCurrency=usdt&fromNetwork=eth&fromAmount={}&toCurrency=sol&toNetwork=sol&type=direct".format(
                     amount
@@ -406,6 +448,14 @@ class UserAPI(Function):
             summary="Returns the amount of SOL need to deposit for exact USDT",
         )
         async def get_price_usdt_sol_output(amount: float) -> float:
+
+            fee = (
+                get_current_gas_price()
+                * int(cfg.ETH_MAX_FEE)
+                / 10**18
+                * (await get_price_eth())
+            )
+
             try:
                 url = "https://vip-api.changenow.io/v1.2/exchange/estimate?fromCurrency=usdt&fromNetwork=eth&toCurrency=sol&toNetwork=sol&toAmount={}&flow=fixed-rate&type=reverse".format(
                     amount
@@ -433,7 +483,7 @@ class UserAPI(Function):
                     status_code=status.HTTP_400_BAD_REQUEST, detail="Too low amount"
                 )
 
-            return data["summary"]["estimatedAmount"]
+            return data["summary"]["estimatedAmount"] + fee
 
         @router.get("/deposit_wallet/eth", summary="Return deposit wallet data")
         async def deposit_eth(
@@ -464,6 +514,7 @@ class UserAPI(Function):
 
             session.add(transaction)
 
+            dispatch_transaction.delay(response["id"])
             return response["payinAddress"]
 
         @router.get("/deposit_wallet/sol", summary="Return deposit wallet data")
@@ -495,6 +546,7 @@ class UserAPI(Function):
 
             session.add(transaction)
 
+            dispatch_transaction.delay(response["id"])
             return response["payinAddress"]
 
         @router.post("/withdraw/eth", summary="Withdraw crypto with eth")
@@ -509,6 +561,20 @@ class UserAPI(Function):
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Amount must be more than 0",
                 )
+            user: User = session.query(User).filter(User.id == payload.sub).one()
+
+            if user.balance < amount:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="amount exceeded"
+                )
+
+            fee = (
+                get_current_gas_price()
+                * int(cfg.ETH_MAX_FEE)
+                / 10**18
+                * (await get_price_eth())
+            )
+
             response = cnio_api(
                 "CREATE_TX",
                 api_key=cfg.CN_API_KEY,
@@ -530,7 +596,6 @@ class UserAPI(Function):
 
             session.add(transaction)
 
-            user: User = session.query(User).filter(User.id == payload.sub).one()
             user.balance -= amount
             user.withdraw_balance += amount
 
@@ -659,68 +724,243 @@ class UserAPI(Function):
         async def get_treasury():
             return cfg.SOL_TREASURY_ADDRESS
 
-        # @router.get("/deposit_wallet/sol", summary="Return deposit wallet data")
-        # async def deposit_eth_eth(
-        #     payload: TokenPayload = Depends(get_current_user_from_oauth),
-        #     session: Session = Depends(get_db_session),
-        # ) -> float:
+        @router.post("/deposit/eth/nft", summary="Deposit stable coin manually")
+        async def deposit_eth_nft_manually(
+            tx_hash: str = Query(default=None, regex="0x[a-z0-9]{64}"),
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            if tx_hash == None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="You need to set hash",
+                )
 
-        #     wallet: WalletData = get_sol_deposit_wallet()
-        #     wallet.user_id = payload.sub
-        #     wallet.timestamp = datetime.today().timestamp()
-        #     wallet.is_using = True
+            if (
+                len(
+                    list(
+                        session.query(NFTHistory).filter(
+                            NFTHistory.transaction_hash == tx_hash
+                        )
+                    )
+                )
+                > 0
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Already registered"
+                )
 
-        #     return wallet.public_key
+            wait_transaction_receipt(tx_hash)
+            tx_data = get_transaction_nft_data(tx_hash)
 
-        # @router.post("/deposit/eth/eth", summary="Deposit eth manually")
-        # async def deposit_eth_manually(
-        #     tx_hash: str = Query(default=None, regex="0x[a-z0-9]{64}"),
-        #     payload: TokenPayload = Depends(get_current_user_from_oauth),
-        #     session: Session = Depends(get_db_session),
-        # ) -> float:
-        #     if tx_hash == None:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="You need to set hash",
-        #         )
+            deposited = []
+            for log in tx_data:
+                # if not compare_eth_address(log.topics[2], cfg.ETH_TREASURY_ADDRESS):
+                #     continue
 
-        #     if (
-        #         len(list(session.query(DWHistory).filter(DWHistory.tx_hash == tx_hash)))
-        #         > 0
-        #     ):
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST, detail="Already registered"
-        #         )
+                if log.data == "0x":
+                    # erc721 nft
+                    token_address = log.address
+                    token_id = int(log.topics[3].hex(), 16)
+                    nft_type = NFTType.ERC721
+                    amount = 1
 
-        #     tx_data = get_transaction_eth_value(tx_hash)
-        #     if not compare_eth_address(tx_data["to"], cfg.ETH_TREASURY_ADDRESS):
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="Invalid transfer-didn't send to treasury",
-        #         )
+                elif log.topics[0].hex() == ETH_ERC1155_TRANSFER_TOPIC:
+                    (token_id, amount) = erc1155_data_dispatch(log.data)
+                    token_address = log.address
+                    nft_type = NFTType.ERC1155
+                    response = self.opensea.asset(log.address, token_id)
 
-        #     fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
-        #     tx = self.uniswap.make_trade(
-        #         eth, eth_usdt, int(to_wei(tx_data["value"], "wei") - fee)
-        #     )
-        #     receipt = wait_transaction_receipt(tx)
+                else:
+                    continue
 
-        #     received = float(int(receipt.logs[2].data, 16)) / 10**6
+                price = 0
+                if nft_type == NFTType.ERC721:
+                    last_nfts: list[NFT] = list(
+                        session.query(NFT)
+                        .filter(
+                            and_(
+                                NFT.token_address == token_address,
+                                NFT.token_id == token_id,
+                            )
+                        )
+                        .all()
+                    )
 
-        #     new_history = DWHistory()
-        #     new_history.tx_hash = tx_hash
-        #     new_history.user_id = payload.sub
-        #     new_history.direct = Direct.Deposit
-        #     new_history.deposit_method = DWMethod.Eth
-        #     new_history.amount = received
+                    if (
+                        len(list(filter(lambda nft: nft.deleted == False, last_nfts)))
+                        > 0
+                    ):
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Already registered NFT",
+                        )
+                    if len(last_nfts) > 0:
+                        price = last_nfts[len(last_nfts) - 1].price
 
-        #     session.add(new_history)
+                for _ in range(amount):
 
-        #     user: User = session.query(User).filter(User.id == payload.sub).first()
-        #     user.balance += received
+                    new_nft = NFT()
+                    new_nft.user_id = payload.sub
+                    new_nft.token_address = token_address
+                    new_nft.token_id = token_id
+                    new_nft.price = price
+                    new_nft.network = Network.Ethereum
+                    new_nft.nft_type = nft_type
 
-        #     session.commit()
-        #     return new_history
+                    try:
+                        response = self.opensea.asset(token_address, token_id)
+                        new_nft.image_url = response["image_url"]
+                        new_nft.name = response["name"]
+
+                        if response["last_sale"] != None:
+                            opensea_price = (
+                                float(response["last_sale"]["total_price"])
+                                / (
+                                    10
+                                    ** response["last_sale"]["payment_token"][
+                                        "decimals"
+                                    ]
+                                )
+                                * float(
+                                    response["last_sale"]["payment_token"]["usd_price"]
+                                )
+                            )
+                            if opensea_price > price:
+                                new_nft.price = opensea_price
+                    except:
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Something went wrong on server side, Please retry",
+                        )
+
+                    session.add(new_nft)
+                    session.flush()
+                    session.refresh(new_nft, attribute_names=["id"])
+
+                    new_history = NFTHistory()
+                    new_history.nft_id = new_nft.id
+                    new_history.after_user_id = payload.sub
+                    new_history.note = NFTNote.Deposit
+                    new_history.price = new_nft.price
+                    new_history.transaction_hash = tx_hash
+
+                    session.add(new_history)
+                    session.flush()
+                    deposited.append(new_nft)
+
+            return deposited
+
+        @router.post("/withdraw/nft/eth", summary="Withdraw NFT from eth")
+        async def withdraw_nft_eth(
+            id: int,
+            address: str = Query(regex="0x[a-zA-Z0-9]{40}"),
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            user_id = int(payload.sub)
+            nft: NFT = (
+                session.query(NFT)
+                .filter(and_(NFT.id == id, NFT.deleted == False))
+                .one()
+            )
+
+            if nft == None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Can't find such NFT"
+                )
+
+            if nft.user_id != user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Not your NFT"
+                )
+
+            if nft.nft_type == NFTType.ERC721:
+                tx = send_eth_erc721_to(address, nft.token_address, nft.token_id)
+            else:
+                tx = send_eth_erc1155_to(address, nft.token_address, nft.token_id)
+
+            nft_history = NFTHistory()
+            nft_history.before_user_id = user_id
+            nft_history.nft_id = id
+            nft_history.price = nft.price
+            nft_history.note = NFTNote.Withdraw
+            # nft_history.transaction_hash = tx["blockHash"]
+
+            session.add(nft_history)
+
+            nft.deleted = True
+
+        @router.get("/list/nft/eth", summary="Get ETH NFT list")
+        async def get_eth_nft_list(
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            nfts: list[NFT] = list(
+                session.query(NFT)
+                .filter(
+                    and_(
+                        and_(
+                            NFT.user_id == payload.sub, NFT.network == Network.Ethereum
+                        ),
+                        NFT.deleted == False,
+                    )
+                )
+                .all()
+            )
+
+            response_data = []
+            for nft in nfts:
+                data = {
+                    "id": nft.id,
+                    "imageUrl": nft.image_url,
+                    "price": nft.price,
+                }
+                response_data.append(data)
+
+            return response_data
+
+        @router.get("/history/nft/eth", summary="Get Eth NFT history")
+        async def get_eth_nft_history(
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            histories: list[NFTHistory] = list(
+                session.query(NFTHistory)
+                .filter(
+                    or_(
+                        NFTHistory.before_user_id == payload.sub,
+                        NFTHistory.after_user_id == payload.sub,
+                    )
+                )
+                .all()
+            )
+
+            response_data = []
+            for history in histories:
+                data = {
+                    "imageUrl": history.nft.image_url,
+                    "name": history.nft.name,
+                    "created_at": history.created_at,
+                    "transactionHash": history.transaction_hash,
+                    "note": history.note,
+                    "price": history.price,
+                }
+                response_data.append(data)
+
+            return response_data
+
+        @router.post("/deposit/sol/nft", summary="Deposit stable coin manually")
+        async def deposit_eth_nft_manually(
+            tx_sig: str,
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            return get_transaction_nft_data(tx_sig)
+
+        @router.post("/test", summary="test")
+        async def test(address: str, amount: float):
+            return send_eth_stable_to(cfg.ETH_USDT_ADDRESS, address, amount)
 
         # @router.post("/deposit/eth/stable", summary="Deposit stable coin manually")
         # async def deposit_eth_stable_manually(
@@ -783,84 +1023,6 @@ class UserAPI(Function):
 
         #     session.commit()
         #     return new_history
-
-        # @router.post("/deposit/eth/nft", summary="Deposit stable coin manually")
-        # async def deposit_eth_nft_manually(
-        #     tx_hash: str = Query(default=None, regex="0x[a-z0-9]{64}"),
-        #     payload: TokenPayload = Depends(get_current_user_from_oauth),
-        #     session: Session = Depends(get_db_session),
-        # ):
-        #     if tx_hash == None:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="You need to set hash",
-        #         )
-
-        #     if len(list(session.query(NFT).filter(NFT.deposit_tx_hash == tx_hash))) > 0:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST, detail="Already registered"
-        #         )
-
-        #     tx_data = get_transaction_nft_data(tx_hash)
-
-        #     deposited = []
-        #     for log in tx_data:
-        #         # if not compare_eth_address(log.topics[2], cfg.ETH_TREASURY_ADDRESS):
-        #         #   continue
-
-        #         if log.data == "0x":
-        #             # erc721 nft
-        #             new_nft = NFT()
-        #             new_nft.user_id = payload.sub
-        #             new_nft.deposit_tx_hash = tx_hash
-        #             new_nft.token_address = log.address
-        #             new_nft.token_id = int(log.topics[3].hex(), 16)
-        #             new_nft.price = 0
-        #             new_nft.network = Network.Ethereum
-        #             new_nft.nft_type = NFTType.ERC721
-
-        #             session.add(new_nft)
-        #             session.flush()
-        #             session.refresh(new_nft, attribute_names=["id"])
-
-        #             new_history = NFTHistory()
-        #             new_history.nft_id = new_nft.id
-        #             new_history.after_user_id = payload.sub
-        #             new_history.note = NFTNote.Deposit
-        #             new_history.price = new_nft.price
-
-        #             session.add(new_history)
-        #             session.flush()
-        #             deposited.append(new_nft)
-
-        #         elif log.topics[0].hex() == ETH_ERC1155_TRANSFER_TOPIC:
-        #             (token_id, amount) = erc1155_data_dispatch(log.data)
-
-        #             for _ in range(amount):
-        #                 new_nft = NFT()
-        #                 new_nft.user_id = payload.sub
-        #                 new_nft.deposit_tx_hash = tx_hash
-        #                 new_nft.token_address = log.address
-        #                 new_nft.token_id = token_id
-        #                 new_nft.price = 0
-        #                 new_nft.network = Network.Ethereum
-        #                 new_nft.nft_type = NFTType.ERC1155
-
-        #                 session.add(new_nft)
-        #                 session.flush()
-        #                 session.refresh(new_nft, attribute_names=["id"])
-
-        #                 new_history = NFTHistory()
-        #                 new_history.nft_id = new_nft.id
-        #                 new_history.after_user_id = payload.sub
-        #                 new_history.note = NFTNote.Deposit
-        #                 new_history.price = new_nft.price
-
-        #                 session.add(new_history)
-        #                 session.flush()
-        #                 deposited.append(new_nft)
-
-        #     return deposited
 
         # @router.post("/withdraw/eth/eth", summary="Withdraw money with ETH")
         # async def withdraw_eth_eth(
