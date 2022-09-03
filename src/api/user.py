@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import Field
+from itertools import count
 from operator import and_, or_
 from typing import Callable
 
@@ -604,20 +605,25 @@ class UserAPI(Function):
 
             return
 
-        @router.get("/records", summary="Return all records of user")
+        @router.get("/history/crypto", summary="Return all records of user")
         async def get_records(
             offset: int = 0,
             count: int = 10,
             payload: TokenPayload = Depends(get_current_user_from_oauth),
             session: Session = Depends(get_db_session),
         ):
+            total = (
+                session.query(Transaction)
+                .filter(Transaction.user_id == payload.sub)
+                .count()
+            )
             records = list(
                 session.query(Transaction)
                 .filter(Transaction.user_id == payload.sub)
                 .offset(offset)
                 .limit(count)
             )
-            return records
+            return {"records": records, "total": total}
 
         @router.get("/nft/wallet/eth", summary="Get all nft data from wallet address")
         async def get_nft_eth(
@@ -859,27 +865,49 @@ class UserAPI(Function):
 
         @router.get("/history/nft/eth", summary="Get Ethereum NFT history")
         async def get_eth_nft_history(
+            offset: int = 0,
+            count: int = 10,
             payload: TokenPayload = Depends(get_current_user_from_oauth),
             session: Session = Depends(get_db_session),
         ):
-            histories: list[NFTHistory] = list(
-                session.query(NFTHistory)
+            total = (
+                session.query(NFTHistory, NFT)
                 .filter(
-                    or_(
-                        NFTHistory.before_user_id == payload.sub,
-                        NFTHistory.after_user_id == payload.sub,
-                    ),
+                    and_(
+                        and_(
+                            NFT.id == NFTHistory.nft_id, NFT.network == Network.Ethereum
+                        ),
+                        or_(
+                            NFTHistory.before_user_id == payload.sub,
+                            NFTHistory.after_user_id == payload.sub,
+                        ),
+                    )
                 )
-                .all()
+                .count()
+            )
+            histories: list[any] = list(
+                session.query(NFTHistory, NFT)
+                .filter(
+                    and_(
+                        and_(
+                            NFT.id == NFTHistory.nft_id, NFT.network == Network.Ethereum
+                        ),
+                        or_(
+                            NFTHistory.before_user_id == payload.sub,
+                            NFTHistory.after_user_id == payload.sub,
+                        ),
+                    )
+                )
+                .offset(offset)
+                .limit(count)
             )
 
             response_data = []
-            for history in histories:
-                if history.nft.network != Network.Ethereum:
-                    continue
+            for (history, nft) in histories:
+                print(history, nft)
                 data = {
-                    "imageUrl": history.nft.image_url,
-                    "name": history.nft.name,
+                    "imageUrl": nft.image_url,
+                    "name": nft.name,
                     "created_at": history.created_at,
                     "transactionHash": history.transaction_hash,
                     "note": history.note,
@@ -887,7 +915,7 @@ class UserAPI(Function):
                 }
                 response_data.append(data)
 
-            return response_data
+            return {"total": total, "records": response_data}
 
         @router.post("/deposit/nft/sol", summary="Deposit Solana NFT")
         async def deposit_eth_nft(
@@ -1000,41 +1028,39 @@ class UserAPI(Function):
                 )
 
             response_data = []
-            # try:
-            for token in tokens:
-                if token["listStatus"] == "listed":
-                    continue
+            try:
+                for token in tokens:
+                    if token["listStatus"] == "listed":
+                        continue
 
-                url = (
-                    "https://api.solscan.io/nft/trade?mint={}&offset=0&limit=1".format(
+                    url = "https://api.solscan.io/nft/trade?mint={}&offset=0&limit=1".format(
                         token["mintAddress"]
                     )
+                    try:
+                        response = requests.get(url)
+                        trade_data = json.loads(response.content.decode("utf-8"))
+                    except:
+                        continue
+
+                    data = {
+                        "address": token["mintAddress"],
+                        "imageUrl": token["image"],
+                        "name": token["name"],
+                        "price": 0,
+                    }
+
+                    if len(trade_data["data"]) == 1:
+                        data["price"] = (
+                            float(trade_data["data"][0]["price"]) / 10**9 * sol_price
+                        )
+
+                        response_data.append(data)
+
+            except:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Too many request",
                 )
-                try:
-                    response = requests.get(url)
-                    trade_data = json.loads(response.content.decode("utf-8"))
-                except:
-                    continue
-
-                data = {
-                    "address": token["mintAddress"],
-                    "imageUrl": token["image"],
-                    "name": token["name"],
-                    "price": 0,
-                }
-
-                if len(trade_data["data"]) == 1:
-                    data["price"] = (
-                        float(trade_data["data"][0]["price"]) / 10**9 * sol_price
-                    )
-
-                    response_data.append(data)
-
-            # except:
-            #     raise HTTPException(
-            #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            #         detail="Too many request",
-            #     )
 
             return response_data
 
@@ -1062,13 +1088,13 @@ class UserAPI(Function):
                     detail="Not owner of that NFT",
                 )
 
-            # try:
-            tx_data = await transfer_solana_nft(nft.token_address, address)
-            # except:
-            #     raise HTTPException(
-            #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            #         detail="Something went wrong on server side",
-            #     )
+            try:
+                tx_data = await transfer_solana_nft(nft.token_address, address)
+            except:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Something went wrong on server side",
+                )
 
             nft.deleted = True
 
@@ -1110,27 +1136,49 @@ class UserAPI(Function):
 
         @router.get("/history/nft/sol", summary="Get Solana NFT history")
         async def get_sol_nft_history(
+            offset: int = 0,
+            count: int = 10,
             payload: TokenPayload = Depends(get_current_user_from_oauth),
             session: Session = Depends(get_db_session),
         ):
-            histories: list[NFTHistory] = list(
-                session.query(NFTHistory)
+            total = (
+                session.query(NFTHistory, NFT)
                 .filter(
-                    or_(
-                        NFTHistory.before_user_id == payload.sub,
-                        NFTHistory.after_user_id == payload.sub,
+                    and_(
+                        and_(
+                            NFT.id == NFTHistory.nft_id, NFT.network == Network.Ethereum
+                        ),
+                        or_(
+                            NFTHistory.before_user_id == payload.sub,
+                            NFTHistory.after_user_id == payload.sub,
+                        ),
                     )
                 )
-                .all()
+                .count()
+            )
+            histories: list[any] = list(
+                session.query(NFTHistory, NFT)
+                .filter(
+                    and_(
+                        and_(
+                            NFT.id == NFTHistory.nft_id, NFT.network == Network.Solana
+                        ),
+                        or_(
+                            NFTHistory.before_user_id == payload.sub,
+                            NFTHistory.after_user_id == payload.sub,
+                        ),
+                    )
+                )
+                .offset(offset)
+                .limit(count)
             )
 
             response_data = []
-            for history in histories:
-                if history.nft.network != Network.Solana:
-                    continue
+            for (history, nft) in histories:
+                print(history, nft)
                 data = {
-                    "imageUrl": history.nft.image_url,
-                    "name": history.nft.name,
+                    "imageUrl": nft.image_url,
+                    "name": nft.name,
                     "created_at": history.created_at,
                     "transactionHash": history.transaction_hash,
                     "note": history.note,
@@ -1138,6 +1186,6 @@ class UserAPI(Function):
                 }
                 response_data.append(data)
 
-            return response_data
+            return {"total": total, "records": response_data}
 
         app.include_router(router)
