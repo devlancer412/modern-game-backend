@@ -3,8 +3,6 @@ from dataclasses import Field
 from operator import and_, or_
 from typing import Callable
 
-from eth_utils import to_wei
-
 from app.__internal import Function
 from fastapi import FastAPI, APIRouter, Query, status, HTTPException, Depends
 from sqlalchemy.orm import Session
@@ -32,6 +30,11 @@ from src.schemas.user import UserUpdateData
 
 from src.changenow_api.client import api_wrapper as cnio_api
 from opensea import OpenseaAPI
+from src.utils.solana_web3 import (
+    get_solana_nft_transaction_data,
+    is_owner_of_nft,
+    transfer_solana_nft,
+)
 
 from src.utils.web3 import (
     ETH_ERC1155_TRANSFER_TOPIC,
@@ -654,78 +657,12 @@ class UserAPI(Function):
 
             return response_data
 
-        @router.get("/nft/wallet/sol", summary="Get all nft data from wallet address")
-        async def get_nft_sol(
-            address: str,
-            payload: TokenPayload = Depends(get_current_user_from_oauth),
-            session: Session = Depends(get_db_session),
-        ):
-            url = (
-                "https://api-mainnet.magiceden.dev/v2/wallets/{}/tokens?limit=4".format(
-                    address
-                )
-            )
-
-            try:
-                response = requests.get(url)
-                tokens = json.loads(response.content.decode("utf-8"))
-                url = "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd"
-                response = requests.get(url)
-                sol_price = json.loads(response.content.decode("utf-8"))["solana"][
-                    "usd"
-                ]
-            except:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Something went wrong in server side",
-                )
-
-            response_data = []
-            # try:
-            for token in tokens:
-                url = (
-                    "https://api.solscan.io/nft/trade?mint={}&offset=0&limit=1".format(
-                        token["mintAddress"]
-                    )
-                )
-                try:
-                    response = requests.get(url)
-                    trade_data = json.loads(response.content.decode("utf-8"))
-                except:
-                    continue
-
-                data = {
-                    "address": token["mintAddress"],
-                    "imageUrl": token["image"],
-                    "name": token["name"],
-                    "price": 0,
-                }
-
-                if len(trade_data["data"]) == 1:
-                    data["price"] = (
-                        float(trade_data["data"][0]["price"]) / 10**9 * sol_price
-                    )
-
-                    response_data.append(data)
-
-            # except:
-            #     raise HTTPException(
-            #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            #         detail="Too many request",
-            #     )
-
-            return response_data
-
         @router.get("/eth/treasury", summary="Return ethereum treasury address")
         async def get_treasury():
             return cfg.ETH_TREASURY_ADDRESS
 
-        @router.get("/sol/treasury", summary="Return solana treasury address")
-        async def get_treasury():
-            return cfg.SOL_TREASURY_ADDRESS
-
-        @router.post("/deposit/eth/nft", summary="Deposit stable coin manually")
-        async def deposit_eth_nft_manually(
+        @router.post("/deposit/nft/eth", summary="Deposit Ethereum NFT")
+        async def deposit_eth_nft(
             tx_hash: str = Query(default=None, regex="0x[a-z0-9]{64}"),
             payload: TokenPayload = Depends(get_current_user_from_oauth),
             session: Session = Depends(get_db_session),
@@ -755,8 +692,8 @@ class UserAPI(Function):
 
             deposited = []
             for log in tx_data:
-                # if not compare_eth_address(log.topics[2], cfg.ETH_TREASURY_ADDRESS):
-                #     continue
+                if not compare_eth_address(log.topics[2], cfg.ETH_TREASURY_ADDRESS):
+                    continue
 
                 if log.data == "0x":
                     # erc721 nft
@@ -851,7 +788,7 @@ class UserAPI(Function):
 
             return deposited
 
-        @router.post("/withdraw/nft/eth", summary="Withdraw NFT from eth")
+        @router.post("/withdraw/nft/eth", summary="Withdraw Ethereum NFT")
         async def withdraw_nft_eth(
             id: int,
             address: str = Query(regex="0x[a-zA-Z0-9]{40}"),
@@ -885,7 +822,7 @@ class UserAPI(Function):
             nft_history.nft_id = id
             nft_history.price = nft.price
             nft_history.note = NFTNote.Withdraw
-            # nft_history.transaction_hash = tx["blockHash"]
+            nft_history.transaction_hash = tx["blockHash"]
 
             session.add(nft_history)
 
@@ -920,8 +857,259 @@ class UserAPI(Function):
 
             return response_data
 
-        @router.get("/history/nft/eth", summary="Get Eth NFT history")
+        @router.get("/history/nft/eth", summary="Get Ethereum NFT history")
         async def get_eth_nft_history(
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            histories: list[NFTHistory] = list(
+                session.query(NFTHistory)
+                .filter(
+                    or_(
+                        NFTHistory.before_user_id == payload.sub,
+                        NFTHistory.after_user_id == payload.sub,
+                    ),
+                )
+                .all()
+            )
+
+            response_data = []
+            for history in histories:
+                if history.nft.network != Network.Ethereum:
+                    continue
+                data = {
+                    "imageUrl": history.nft.image_url,
+                    "name": history.nft.name,
+                    "created_at": history.created_at,
+                    "transactionHash": history.transaction_hash,
+                    "note": history.note,
+                    "price": history.price,
+                }
+                response_data.append(data)
+
+            return response_data
+
+        @router.post("/deposit/nft/sol", summary="Deposit Solana NFT")
+        async def deposit_eth_nft(
+            tx_sig: str,
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            # get nft transfer transaction data
+            tx_datas = await get_solana_nft_transaction_data(tx_sig)
+            # get current solana price
+            url = "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd"
+            response = requests.get(url)
+            sol_price = json.loads(response.content.decode("utf-8"))["solana"]["usd"]
+            # loop nfts
+            for tx_data in tx_datas:
+                if not await is_owner_of_nft(
+                    tx_data["token"], cfg.SOL_TREASURY_ADDRESS, tx_data["to"]
+                ):
+                    continue
+
+                last_nfts: list[NFT] = list(
+                    session.query(NFT)
+                    .filter(
+                        and_(
+                            NFT.token_address == tx_data["token"],
+                            NFT.network == Network.Solana,
+                        )
+                    )
+                    .all()
+                )
+
+                if len(list(filter(lambda nft: nft.deleted == False, last_nfts))) > 0:
+                    continue
+                # get nft metadata by magic eden api
+                url = "https://api-mainnet.magiceden.dev/v2/tokens/{}".format(
+                    tx_data["token"]
+                )
+
+                response = requests.get(url)
+                nft_data = json.loads(response.content.decode("utf-8"))
+
+                # create new nft
+                new_nft = NFT()
+                new_nft.name = nft_data["name"]
+                new_nft.image_url = nft_data["image"]
+                new_nft.token_address = tx_data["token"]
+                new_nft.network = Network.Solana
+                new_nft.user_id = payload.sub
+                new_nft.price = 0
+                # get last price
+                if len(last_nfts) > 0:
+                    new_nft.price = last_nfts[len(last_nfts) - 1].price
+                # get trade price
+                url = (
+                    "https://api.solscan.io/nft/trade?mint={}&offset=0&limit=1".format(
+                        tx_data["token"]
+                    )
+                )
+                response = requests.get(url)
+                trade_data = json.loads(response.content.decode("utf-8"))
+
+                if len(list(trade_data["data"])) > 0:
+                    price = float(trade_data["data"][0]["price"]) / 10**9 * sol_price
+                    if price > new_nft.price:
+                        new_nft.price = price
+
+                session.add(new_nft)
+                session.flush()
+                session.refresh(new_nft, attribute_names=["id"])
+
+                new_history = NFTHistory()
+                new_history.after_user_id = payload.sub
+                new_history.nft_id = new_nft.id
+                new_history.note = NFTNote.Deposit
+                new_history.transaction_hash = tx_sig
+                new_history.price = new_nft.price
+
+                session.add(new_history)
+
+            return tx_datas
+
+        @router.get("/sol/treasury", summary="Return solana treasury address")
+        async def get_treasury():
+            return cfg.SOL_TREASURY_ADDRESS
+
+        @router.get("/nft/wallet/sol", summary="Get all nft data from wallet address")
+        async def get_nft_sol(
+            address: str,
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            url = (
+                "https://api-mainnet.magiceden.dev/v2/wallets/{}/tokens?limit=4".format(
+                    address
+                )
+            )
+
+            try:
+                response = requests.get(url)
+                tokens = json.loads(response.content.decode("utf-8"))
+                url = "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd"
+                response = requests.get(url)
+                sol_price = json.loads(response.content.decode("utf-8"))["solana"][
+                    "usd"
+                ]
+            except:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Something went wrong in server side",
+                )
+
+            response_data = []
+            # try:
+            for token in tokens:
+                if token["listStatus"] == "listed":
+                    continue
+
+                url = (
+                    "https://api.solscan.io/nft/trade?mint={}&offset=0&limit=1".format(
+                        token["mintAddress"]
+                    )
+                )
+                try:
+                    response = requests.get(url)
+                    trade_data = json.loads(response.content.decode("utf-8"))
+                except:
+                    continue
+
+                data = {
+                    "address": token["mintAddress"],
+                    "imageUrl": token["image"],
+                    "name": token["name"],
+                    "price": 0,
+                }
+
+                if len(trade_data["data"]) == 1:
+                    data["price"] = (
+                        float(trade_data["data"][0]["price"]) / 10**9 * sol_price
+                    )
+
+                    response_data.append(data)
+
+            # except:
+            #     raise HTTPException(
+            #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            #         detail="Too many request",
+            #     )
+
+            return response_data
+
+        @router.post("/withdraw/nft/sol", summary="Withdraw Solana NFT")
+        async def withdraw_nft_sol(
+            id: int,
+            address: str,
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            nft: NFT = (
+                session.query(NFT)
+                .filter(and_(NFT.id == id, NFT.deleted == False))
+                .one()
+            )
+
+            if nft == None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Not found such NFT"
+                )
+
+            if nft.user_id != int(payload.sub):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Not owner of that NFT",
+                )
+
+            # try:
+            tx_data = await transfer_solana_nft(nft.token_address, address)
+            # except:
+            #     raise HTTPException(
+            #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            #         detail="Something went wrong on server side",
+            #     )
+
+            nft.deleted = True
+
+            nft_history = NFTHistory()
+            nft_history.before_user_id = payload.sub
+            nft_history.nft_id = nft.id
+            nft_history.note = NFTNote.Withdraw
+            nft_history.price = nft.price
+            nft_history.transaction_hash = tx_data
+
+            session.add(nft_history)
+
+        @router.get("/list/nft/sol", summary="Get Solana NFT list")
+        async def get_sol_nft_list(
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            nfts: list[NFT] = list(
+                session.query(NFT)
+                .filter(
+                    and_(
+                        and_(NFT.user_id == payload.sub, NFT.network == Network.Solana),
+                        NFT.deleted == False,
+                    )
+                )
+                .all()
+            )
+
+            response_data = []
+            for nft in nfts:
+                data = {
+                    "id": nft.id,
+                    "imageUrl": nft.image_url,
+                    "price": nft.price,
+                }
+                response_data.append(data)
+
+            return response_data
+
+        @router.get("/history/nft/sol", summary="Get Solana NFT history")
+        async def get_sol_nft_history(
             payload: TokenPayload = Depends(get_current_user_from_oauth),
             session: Session = Depends(get_db_session),
         ):
@@ -938,6 +1126,8 @@ class UserAPI(Function):
 
             response_data = []
             for history in histories:
+                if history.nft.network != Network.Solana:
+                    continue
                 data = {
                     "imageUrl": history.nft.image_url,
                     "name": history.nft.name,
@@ -949,275 +1139,5 @@ class UserAPI(Function):
                 response_data.append(data)
 
             return response_data
-
-        @router.post("/deposit/sol/nft", summary="Deposit stable coin manually")
-        async def deposit_eth_nft_manually(
-            tx_sig: str,
-            payload: TokenPayload = Depends(get_current_user_from_oauth),
-            session: Session = Depends(get_db_session),
-        ):
-            return get_transaction_nft_data(tx_sig)
-
-        @router.post("/test", summary="test")
-        async def test(address: str, amount: float):
-            return send_eth_stable_to(cfg.ETH_USDT_ADDRESS, address, amount)
-
-        # @router.post("/deposit/eth/stable", summary="Deposit stable coin manually")
-        # async def deposit_eth_stable_manually(
-        #     tx_hash: str = Query(default=None, regex="0x[a-z0-9]{64}"),
-        #     payload: TokenPayload = Depends(get_current_user_from_oauth),
-        #     session: Session = Depends(get_db_session),
-        # ) -> float:
-        #     if tx_hash == None:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="You need to set hash",
-        #         )
-
-        #     if (
-        #         len(list(session.query(DWHistory).filter(DWHistory.tx_hash == tx_hash)))
-        #         > 0
-        #     ):
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST, detail="Already registered"
-        #         )
-
-        #     tx_data = get_transaction_token_value(tx_hash)
-
-        #     if not compare_eth_address(
-        #         tx_data["contract"], eth_usdt
-        #     ) and not compare_eth_address(tx_data["contract"], eth_usdc):
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="Invalid transfer-not USDT",
-        #         )
-
-        #     if not compare_eth_address(tx_data["to"], cfg.ETH_TREASURY_ADDRESS):
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="Invalid transfer-didn't send to treasury",
-        #         )
-
-        #     fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
-        #     fee_usdt = (
-        #         float(self.uniswap.get_price_output(eth_usdt, eth, fee)) / 10**6
-        #     )
-        #     received = float(int(tx_data["value"], 16) - fee_usdt) / 10**6
-
-        #     new_history = DWHistory()
-        #     new_history.tx_hash = tx_hash
-        #     new_history.user_id = payload.sub
-        #     new_history.direct = Direct.Deposit
-
-        #     if tx_data["contract"] == cfg.ETH_USDT_ADDRESS:
-        #         new_history.deposit_method = DWMethod.Usdt
-        #     elif tx_data["contract"] == cfg.ETH_USDC_ADDRESS:
-        #         new_history.deposit_method = DWMethod.Usdc
-
-        #     new_history.amount = received
-
-        #     session.add(new_history)
-
-        #     user: User = session.query(User).filter(User.id == payload.sub).first()
-        #     user.balance += received
-
-        #     session.commit()
-        #     return new_history
-
-        # @router.post("/withdraw/eth/eth", summary="Withdraw money with ETH")
-        # async def withdraw_eth_eth(
-        #     amount: float = Query(default=0),
-        #     wallet: str = Query(default=None, regex="0x[A-Za-z0-9]{40}"),
-        #     payload: TokenPayload = Depends(get_current_user_from_oauth),
-        #     session: Session = Depends(get_db_session),
-        # ) -> float:
-        #     if amount == 0:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="You need to set amount more than 0",
-        #         )
-
-        #     user: User = session.query(User).filter(User.id == payload.sub).first()
-
-        #     fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
-        #     total_eth = (
-        #         self.uniswap.get_price_input(eth_usdt, eth, (user.balance) * 10**6)
-        #         - fee
-        #     )
-
-        #     if amount > total_eth:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="Much than real amount",
-        #         )
-
-        #     delta_balance = (
-        #         float(
-        #             self.uniswap.get_price_output(eth_usdt, eth, amount * 10**18)
-        #             + fee
-        #         )
-        #         / 10**6
-        #     )
-        #     user.balance -= delta_balance
-        #     user.withdraw_balance += delta_balance
-
-        #     new_history = DWHistory()
-        #     new_history.amount = delta_balance
-        #     new_history.direct = Direct.Withdraw
-        #     new_history.user_id = payload.sub
-
-        #     session.add(new_history)
-
-        #     tx = self.uniswap.make_trade_output(
-        #         eth_usdt, eth, amount * 10**18, wallet
-        #     )
-        #     receipt = wait_transaction_receipt(tx)
-
-        #     return receipt
-
-        # @router.post("/withdraw/eth/usdt", summary="Withdraw money with USDT")
-        # async def withdraw_eth(
-        #     amount: float = Query(default=0),
-        #     wallet: str = Query(default=None, regex="0x[A-Za-z0-9]{40}"),
-        #     payload: TokenPayload = Depends(get_current_user_from_oauth),
-        #     session: Session = Depends(get_db_session),
-        # ) -> float:
-        #     if amount == 0:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="You need to set amount more than 0",
-        #         )
-
-        #     user: User = session.query(User).filter(User.id == payload.sub).first()
-
-        #     fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
-        #     fee_usdt = (
-        #         float(self.uniswap.get_price_output(eth_usdt, eth, fee)) / 10**6
-        #     )
-
-        #     if amount + fee_usdt > user.balance:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="Much than real amount",
-        #         )
-
-        #     try:
-        #         receipt = send_eth_stable_to(eth_usdt, wallet, amount)
-        #     except Exception as ex:
-        #         print(ex)
-        #         raise HTTPException(
-        #             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        #             detail="Some error occured in server side",
-        #         )
-
-        #     delta_balance = amount + fee_usdt
-        #     user.balance -= delta_balance
-        #     user.withdraw_balance += delta_balance
-
-        #     new_history = DWHistory()
-        #     new_history.amount = delta_balance
-        #     new_history.direct = Direct.Withdraw
-        #     new_history.user_id = payload.sub
-
-        #     session.add(new_history)
-        #     return receipt["blockHash"].hex()
-
-        # @router.post("/withdraw/eth/usdc", summary="Withdraw money with USDC")
-        # async def withdraw_eth(
-        #     amount: float = Query(default=0),
-        #     wallet: str = Query(default=None, regex="0x[A-Za-z0-9]{40}"),
-        #     payload: TokenPayload = Depends(get_current_user_from_oauth),
-        #     session: Session = Depends(get_db_session),
-        # ) -> float:
-        #     if amount == 0:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="You need to set amount more than 0",
-        #         )
-
-        #     user: User = session.query(User).filter(User.id == payload.sub).first()
-
-        #     fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
-        #     fee_usdt = (
-        #         float(self.uniswap.get_price_output(eth_usdc, eth, fee)) / 10**6
-        #     )
-
-        #     if amount + fee_usdt > user.balance:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="Much than real amount",
-        #         )
-
-        #     try:
-        #         receipt = send_eth_stable_to(eth_usdc, wallet, amount)
-        #     except Exception as ex:
-        #         print(ex)
-        #         raise HTTPException(
-        #             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        #             detail="Some error occured in server side",
-        #         )
-
-        #     delta_balance = amount + fee_usdt
-        #     user.balance -= delta_balance
-        #     user.withdraw_balance += delta_balance
-
-        #     new_history = DWHistory()
-        #     new_history.amount = delta_balance
-        #     new_history.direct = Direct.Withdraw
-        #     new_history.user_id = payload.sub
-
-        #     session.add(new_history)
-        #     return receipt["blockHash"].hex()
-
-        # @router.post("/withdraw/sol/sol", summary="Withdraw money with sol")
-        # async def withdraw_sol_sool(
-        #     amount: float = Query(default=0),
-        #     wallet: str = Query(default=None, regex="[A-Za-z0-9]{42-44}"),
-        #     payload: TokenPayload = Depends(get_current_user_from_oauth),
-        #     session: Session = Depends(get_db_session),
-        # ) -> float:
-        #     if amount == 0:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="You need to set amount more than 0",
-        #         )
-
-        #     user: User = session.query(User).filter(User.id == payload.sub).first()
-
-        #     fee = get_current_gas_price() * int(cfg.ETH_SWAP_FEE)
-        #     total_eth = (
-        #         self.uniswap.get_price_input(eth_usdt, eth, (user.balance) * 10**6)
-        #         - fee
-        #     )
-
-        #     if amount > total_eth:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_400_BAD_REQUEST,
-        #             detail="Much than real amount",
-        #         )
-
-        #     delta_balance = (
-        #         float(
-        #             self.uniswap.get_price_output(eth_usdt, eth, amount * 10**18)
-        #             + fee
-        #         )
-        #         / 10**6
-        #     )
-        #     user.balance -= delta_balance
-        #     user.withdraw_balance += delta_balance
-
-        #     new_history = DWHistory()
-        #     new_history.amount = delta_balance
-        #     new_history.direct = Direct.Withdraw
-        #     new_history.user_id = payload.sub
-
-        #     session.add(new_history)
-
-        #     tx = self.uniswap.make_trade_output(
-        #         eth_usdt, eth, amount * 10**18, wallet
-        #     )
-        #     receipt = wait_transaction_receipt(tx)
-
-        #     return receipt
 
         app.include_router(router)

@@ -36,7 +36,7 @@ class Configuration(ConfigBase):
     )
     ETH_MAX_FEE: int = 30000
 
-    SOL_RPC_URL: str = "https://broken-broken-frost.solana-mainnet.quiknode.pro/9e6fcc4860ba30e382a6be3ccbe1455348fc81cb/"
+    SOL_RPC_URL: str = "https://broken-broken-frost.solana-mainnet.quiknode.pro/9e6fcc4860ba30e382a6be3ccbe1455348fc81cb"
     SOL_TREASURY_ADDRESS: str = "4kb8kG8NjqCjgim7DpGC3YWDPY4B5Y4fbFKNeibcPCpo"
     SOL_TREASURY_PRIVATE_KEY: str = "65ozUBVMwsGWLr3K7T8rnHcffvHvb1akYzeQGsMfhTZ1vkArtpsa3qLbTbpA4om1Ar8fPaqPzHW1Sn4oHo4vy6kX"
 
@@ -48,3 +48,5 @@ class Configuration(ConfigBase):
 # --- Do not edit anything below this line, or do it, I'm not your mom ----
 defaults = Configuration(autoload=False)
 cfg = Configuration()
+
+# 54cV7FyCa3c59bVcHUciSR2r2XQrz1KvybcZCwDmpdztGBbRKsdFZSjCfsVx8WFzx7rCWHCXUwDmZ6NQVen54o7b
