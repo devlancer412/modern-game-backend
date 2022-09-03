@@ -21,7 +21,7 @@ class WalletUserBase(BaseModel):
 class UserUpdateData(BaseModel):
     name: str = Field(title="User name")
     avatar: str = Field(title="Avatar url")
-    isPrivacy: bool = (Field(title="Privacy mode"),)
+    isPrivacy: bool = Field(title="Privacy mode")
 
 
 class WalletData:

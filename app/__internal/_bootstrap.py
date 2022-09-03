@@ -10,6 +10,7 @@ UNSET = "CONFIG-NULL"
 
 from fastapi.responses import RedirectResponse
 
+
 class Logger:
     def __init__(self, service: str):
         self.service = service
@@ -29,6 +30,7 @@ class Logger:
     def _log(self, typ: str, *msg):
         print(f"[{typ}] {self.service}: {' '.join([str(x) for x in msg])}")
 
+
 class Function:
     __log = None
 
@@ -41,6 +43,7 @@ class Function:
         if not self.__log:
             self.__log = Logger(f"{self.__class__.__name__}")
         return self.__log
+
 
 class ConfigBase:
     def __init__(self, autoload=True):
@@ -64,7 +67,7 @@ class ConfigBase:
             for i, line in enumerate(lines):
                 x = line.split("=")
                 if len(x) == 2:
-                    self.__dict__[x[0]] = x[1]
+                    self.__dict__[x[0]] = x[1].strip("\n")
                 else:
                     print(f"Warning: .env produced an invalid entry in line {i + 1}")
         except FileNotFoundError:
@@ -79,7 +82,8 @@ class ConfigBase:
                 r.append(k)
 
         return r
-      
+
+
 def bootstrap(app):
     errors: list[dict[str, str]] = []
     warnings: list[dict[str, str]] = []
