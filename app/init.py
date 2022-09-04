@@ -15,7 +15,6 @@ app = FastAPI(
     title="Modern Game Backend API",
     description="Gambling site backend API",
     version="-".join([__version__, __status__]),
-    docs_url="/api/v1/docs",
     root_path="/api/v1",
 )
 
