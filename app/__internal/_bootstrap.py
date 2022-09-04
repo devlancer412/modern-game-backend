@@ -93,7 +93,7 @@ def bootstrap(app):
     def stage():
         return os.getenv("stage", "development")
 
-    @app.get("api/v1")
+    @app.get("/")
     def status():
         return RedirectResponse("/api/v1/docs")
 
