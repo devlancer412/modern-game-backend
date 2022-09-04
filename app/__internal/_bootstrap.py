@@ -89,7 +89,7 @@ def bootstrap(app):
     warnings: list[dict[str, str]] = []
     bootstraps = []
 
-    @app.get("/api/v1/stage")
+    @app.get("/stage")
     def stage():
         return os.getenv("stage", "development")
 
