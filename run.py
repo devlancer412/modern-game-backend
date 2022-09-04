@@ -1,4 +1,5 @@
 import uvicorn
+from app.init import app
 
 original_callback = uvicorn.main.callback
 
@@ -15,4 +16,4 @@ uvicorn.main.callback = callback
 
 
 if __name__ == "__main__":
-    uvicorn.main()
+    uvicorn.run(app, reload=True)

@@ -89,13 +89,13 @@ def bootstrap(app):
     warnings: list[dict[str, str]] = []
     bootstraps = []
 
-    @app.get("/stage")
+    @app.get("/api/v1/stage")
     def stage():
         return os.getenv("stage", "development")
 
-    @app.get("/")
+    @app.get("api/v1")
     def status():
-        return RedirectResponse("/docs")
+        return RedirectResponse("/api/v1/docs")
 
     """
     Look for files inside of the './app/functions' directory and 
