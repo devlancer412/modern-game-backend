@@ -1188,4 +1188,4 @@ class UserAPI(Function):
 
             return {"total": total, "records": response_data}
 
-        app.include_router(router)
+        app.include_router(router, prefix="/api/v1")
