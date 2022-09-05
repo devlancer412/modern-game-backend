@@ -16,6 +16,10 @@ session = database.get_db_session()
 
 celery_log = get_task_logger(__name__)
 
+celery.conf.update(
+    task_serializer="json", result_serializer="json", accept_content=["json"]
+)
+
 
 @celery.task
 def divide(x, y):
@@ -25,7 +29,7 @@ def divide(x, y):
     return x / y
 
 
-@celery.task(serializer="json")
+@celery.task
 async def dispatch_transaction(id: str):
     transaction: Transaction = (
         session.query(Transaction).filter(Transaction.transaction_id == id).one()
