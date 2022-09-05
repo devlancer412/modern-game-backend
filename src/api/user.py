@@ -518,7 +518,7 @@ class UserAPI(Function):
 
             session.add(transaction)
 
-            dispatch_transaction.delay(str(response["id"]))
+            dispatch_transaction.delay(int(response["id"]))
             return response["payinAddress"]
 
         @router.get("/deposit_wallet/sol", summary="Return deposit wallet data")
@@ -550,7 +550,7 @@ class UserAPI(Function):
 
             session.add(transaction)
 
-            dispatch_transaction.delay(str(response["id"]))
+            dispatch_transaction.delay(int(response["id"]))
             return response["payinAddress"]
 
         @router.post("/withdraw/eth", summary="Withdraw crypto with eth")

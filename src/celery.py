@@ -16,11 +16,6 @@ session = database.get_db_session()
 
 celery_log = get_task_logger(__name__)
 
-celery.conf.update(
-    task_serializer="pickle",
-    result_serializer="pickle",
-    accept_content=["pickle", "json"],
-)
 
 
 @celery.task
@@ -32,7 +27,7 @@ def divide(x, y):
 
 
 @celery.task
-async def dispatch_transaction(id: str):
+async def dispatch_transaction(id: int):
     transaction: Transaction = (
         session.query(Transaction).filter(Transaction.transaction_id == id).one()
     )
