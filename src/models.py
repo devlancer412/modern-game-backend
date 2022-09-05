@@ -37,7 +37,7 @@ class User(Base):
     sign_method = Column(SAEnum(SignMethod), nullable=False, default=SignMethod.Email)
     hashed_password = Column(String(512), nullable=True)
     role = Column(SAEnum(RoleEnum), nullable=False, default=RoleEnum.User)
-    avatar_id = Column(Integer, ForeignKey("avatar.id"), nullable=False, default=1)
+    avatar_id = Column(Integer, ForeignKey("avatar.id"), nullable=False, default=0)
     balance = Column(Float, nullable=False, default=0)
     rollback = Column(Float, nullable=False, default=0)
     deposit_balance = Column(Float, nullable=False, default=0)

@@ -568,17 +568,17 @@ class UserAPI(Function):
                 )
             user: User = session.query(User).filter(User.id == payload.sub).one()
 
-            if user.balance < amount:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST, detail="amount exceeded"
-                )
-
             fee = (
                 get_current_gas_price()
                 * int(cfg.ETH_MAX_FEE)
                 / 10**18
                 * (await get_price_eth())
             )
+
+            if user.balance < amount + fee:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="amount exceeded"
+                )
 
             response = cnio_api(
                 "CREATE_TX",
@@ -601,7 +601,59 @@ class UserAPI(Function):
 
             session.add(transaction)
 
-            user.balance -= amount
+            user.balance -= amount + fee
+            user.withdraw_balance += amount
+
+            return
+
+        @router.post("/withdraw/sol", summary="Withdraw crypto with sol")
+        async def withdraw_sol(
+            amount: float,
+            address: str,
+            payload: TokenPayload = Depends(get_current_user_from_oauth),
+            session: Session = Depends(get_db_session),
+        ):
+            if amount == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Amount must be more than 0",
+                )
+            user: User = session.query(User).filter(User.id == payload.sub).one()
+
+            fee = (
+                get_current_gas_price()
+                * int(cfg.ETH_MAX_FEE)
+                / 10**18
+                * (await get_price_eth())
+            )
+
+            if user.balance < amount + fee:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="amount exceeded"
+                )
+
+            response = cnio_api(
+                "CREATE_TX",
+                api_key=cfg.CN_API_KEY,
+                from_ticker="usdterc20",
+                to_ticker="eth",
+                address=address,
+                amount=amount,
+            )
+
+            send_eth_stable_to(cfg.ETH_USDT_ADDRESS, response["payinAddress"], amount)
+
+            transaction = Transaction()
+            transaction.user_id = payload.sub
+            transaction.amount_in = amount
+            transaction.amount_out = response["amount"]
+            transaction.method = DWMethod.Eth
+            transaction.direct = Direct.Withdraw
+            transaction.transaction_id = response["id"]
+
+            session.add(transaction)
+
+            user.balance -= amount + fee
             user.withdraw_balance += amount
 
             return
@@ -682,13 +734,9 @@ class UserAPI(Function):
                 )
 
             if (
-                len(
-                    list(
-                        session.query(NFTHistory).filter(
-                            NFTHistory.transaction_hash == tx_hash
-                        )
-                    )
-                )
+                session.query(NFTHistory)
+                .filter(NFTHistory.transaction_hash == tx_hash)
+                .count()
                 > 0
             ):
                 raise HTTPException(
