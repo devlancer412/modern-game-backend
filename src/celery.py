@@ -17,13 +17,7 @@ session = database.get_db_session()
 celery_log = get_task_logger(__name__)
 
 
-@shared_task(
-    bind=True,
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_kwargs={"max_retries": 5},
-    name="changenow:update_transaction_state",
-)
+@shared_task(bind=True)
 async def dispatch_transaction(id: str):
     transaction: Transaction = (
         session.query(Transaction).filter(Transaction.transaction_id == id).one()
