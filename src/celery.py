@@ -25,7 +25,7 @@ def divide(x, y):
     return x / y
 
 
-@celery.task
+@celery.task(serializer="json")
 async def dispatch_transaction(id: str):
     transaction: Transaction = (
         session.query(Transaction).filter(Transaction.transaction_id == id).one()
