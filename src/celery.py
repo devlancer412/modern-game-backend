@@ -23,7 +23,7 @@ def dispatch_transaction(id: str) -> None:
         session.query(Transaction).filter(Transaction.transaction_id == id).one()
     )
     endTime = datetime.strptime(
-        transaction.created_at, "%Y-%m-%d %H:%M:%S"
+        str(transaction.created_at), "%Y-%m-%d %H:%M:%S"
     ) + timedelta(days=1)
     while transaction.status != "finished":
         try:
