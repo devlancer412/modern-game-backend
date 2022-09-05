@@ -7,6 +7,7 @@ from typing import Callable
 from app.__internal import Function
 from fastapi import FastAPI, APIRouter, Query, status, HTTPException, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 import requests
 import json
 
@@ -89,7 +90,7 @@ class UserAPI(Function):
             user: User = (
                 session.query(User)
                 .filter(and_(User.id == payload.sub, User.deleted == False))
-                .first()
+                .one()
             )
 
             if user is None:
@@ -620,6 +621,7 @@ class UserAPI(Function):
             records = list(
                 session.query(Transaction)
                 .filter(Transaction.user_id == payload.sub)
+                .order_by(desc(Transaction.created_at))
                 .offset(offset)
                 .limit(count)
             )
@@ -898,6 +900,7 @@ class UserAPI(Function):
                         ),
                     )
                 )
+                .order_by(desc(NFTHistory.created_at))
                 .offset(offset)
                 .limit(count)
             )
@@ -1169,6 +1172,7 @@ class UserAPI(Function):
                         ),
                     )
                 )
+                .order_by(desc(NFTHistory.created_at))
                 .offset(offset)
                 .limit(count)
             )
