@@ -32,12 +32,12 @@ def dispatch_transaction(id: str) -> None:
             response = cnio_api(
                 "TX_STATUS", id=transaction.transaction_id, api_key=cfg.CN_API_KEY
             )
-            celery_log.log(transaction.transaction_id, response["status"])
+            celery_log.info(transaction.transaction_id + response["status"])
             transaction.status = response["status"]
 
             if datetime.now() > endTime:
                 break
         except Exception as ex:
-            celery_log.log(ex)
+            celery_log.error(ex)
 
         time.sleep(500)
