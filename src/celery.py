@@ -16,11 +16,6 @@ session = database.get_db_session()
 
 celery_log = get_task_logger(__name__)
 
-# celery.conf.update(
-#     task_serializer="pickle",
-#     result_serializer="pickle",
-#     accept_content=["pickle", "json"],
-# )
 
 
 @celery.task

@@ -11,7 +11,7 @@ class Configuration(ConfigBase):
     # DB_PORT: str = "3306"
     # DATABASE: str = "modern_game"
     DB_USER: str = "root"
-    DB_PASSWORD: str = ""
+    DB_PASSWORD: str = "Dev1994412$"
     DB_HOST: str = "localhost"
     DB_PORT: str = "3306"
     DATABASE: str = "modern_game"

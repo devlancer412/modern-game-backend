@@ -95,7 +95,7 @@ def bootstrap(app):
 
     @app.get("/")
     def status():
-        return RedirectResponse("/docs")
+        return RedirectResponse("/api/v1/docs")
 
     """
     Look for files inside of the './app/functions' directory and 
