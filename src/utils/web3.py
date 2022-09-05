@@ -3,6 +3,7 @@ from hexbytes import HexBytes
 from web3 import Web3, Account
 from web3.middleware import construct_sign_and_send_raw_middleware
 from web3.auto import w3
+from web3.eth import Contract
 
 from config import cfg
 from src.abis.ERC20 import abi as ERC20_abi
@@ -95,21 +96,21 @@ def get_current_gas_price() -> int:
     return web3_eth.eth._gas_price()
 
 
-def get_eth_erc20_contract(coin_address: str) -> object:
+def get_eth_erc20_contract(coin_address: str) -> Contract:
     contract_address = Web3.toChecksumAddress(coin_address)
 
     contract = web3_eth.eth.contract(contract_address, abi=ERC20_abi)
     return contract
 
 
-def get_eth_erc721_contract(address: str) -> object:
+def get_eth_erc721_contract(address: str) -> Contract:
     contract_address = Web3.toChecksumAddress(address)
 
     contract = web3_eth.eth.contract(contract_address, abi=ERC721_abi)
     return contract
 
 
-def get_eth_erc1155_contract(address: str) -> object:
+def get_eth_erc1155_contract(address: str) -> Contract:
     contract_address = Web3.toChecksumAddress(address)
 
     contract = web3_eth.eth.contract(contract_address, abi=ERC1155_abi)
@@ -148,7 +149,7 @@ def send_eth_erc721_to(to_wallet: str, address: str, id: str) -> object:
     # try:
     contract = get_eth_erc721_contract(contract_address)
     transaction = contract.functions.transferFrom(
-        web3_eth.eth.default_account, to_address, id
+        web3_eth.eth.default_account, to_address, int(id)
     ).buildTransaction(
         {
             "from": web3_eth.eth.default_account,
@@ -170,7 +171,7 @@ def send_eth_erc1155_to(to_wallet: str, address: str, id: str) -> object:
     # try:
     contract = get_eth_erc1155_contract(contract_address)
     transaction = contract.functions.safeTransferFrom(
-        web3_eth.eth.default_account, to_address, to_address, id, 1, ""
+        web3_eth.eth.default_account, to_address, to_address, int(id), 1, ""
     ).buildTransaction(
         {
             "from": web3_eth.eth.default_account,

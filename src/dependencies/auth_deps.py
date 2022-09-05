@@ -12,7 +12,9 @@ from ..utils.auth import ALGORITHM, JWT_REFRESH_SECRET_KEY, JWT_SECRET_KEY
 from ..schemas.auth import TokenPayload
 
 email_oauth = OAuth2PasswordBearer(
-    tokenUrl="/api/v1/auth/login/email", scheme_name="JWT"
+    tokenUrl="/api/v1/auth/login/email",
+    # tokenUrl="/auth/login/email",
+    scheme_name="JWT",
 )
 
 

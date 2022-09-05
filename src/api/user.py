@@ -1,13 +1,12 @@
 from __future__ import annotations
 from dataclasses import Field
 from itertools import count
-from operator import and_, or_
 from typing import Callable
 
 from app.__internal import Function
 from fastapi import FastAPI, APIRouter, Query, status, HTTPException, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, and_, or_
 import requests
 import json
 
@@ -47,6 +46,7 @@ from src.utils.web3 import (
     send_eth_erc1155_to,
     send_eth_erc721_to,
     send_eth_stable_to,
+    uint256_to_address,
     wait_transaction_receipt,
 )
 from src.celery import dispatch_transaction
@@ -748,7 +748,9 @@ class UserAPI(Function):
 
             deposited = []
             for log in tx_data:
-                if not compare_eth_address(log.topics[2], cfg.ETH_TREASURY_ADDRESS):
+                if not compare_eth_address(
+                    uint256_to_address(log.topics[2]), cfg.ETH_TREASURY_ADDRESS
+                ):
                     continue
 
                 if log.data == "0x":
@@ -767,6 +769,7 @@ class UserAPI(Function):
                 else:
                     continue
 
+                print(token_address, token_id, nft_type, amount)
                 price = 0
                 if nft_type == NFTType.ERC721:
                     last_nfts: list[NFT] = list(
@@ -868,6 +871,25 @@ class UserAPI(Function):
                     status_code=status.HTTP_400_BAD_REQUEST, detail="Not your NFT"
                 )
 
+            user: User = session.query(User).filter(User.id == user_id).one()
+
+            if user == None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Can't find such User"
+                )
+
+            fee = (
+                get_current_gas_price()
+                * int(cfg.ETH_MAX_FEE)
+                / 10**18
+                * (await get_price_eth())
+            )
+
+            if user.balance < fee:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient fee"
+                )
+
             if nft.nft_type == NFTType.ERC721:
                 tx = send_eth_erc721_to(address, nft.token_address, nft.token_id)
             else:
@@ -878,10 +900,11 @@ class UserAPI(Function):
             nft_history.nft_id = id
             nft_history.price = nft.price
             nft_history.note = NFTNote.Withdraw
-            nft_history.transaction_hash = tx["blockHash"]
+            nft_history.transaction_hash = tx["transactionHash"].hex()
 
             session.add(nft_history)
 
+            user.balance -= fee
             nft.deleted = True
 
         @router.get("/list/nft/eth", summary="Get ETH NFT list")
@@ -920,17 +943,16 @@ class UserAPI(Function):
             payload: TokenPayload = Depends(get_current_user_from_oauth),
             session: Session = Depends(get_db_session),
         ):
+            user_id = int(payload.sub)
             total = (
                 session.query(NFTHistory, NFT)
                 .filter(
-                    and_(
-                        and_(
-                            NFT.id == NFTHistory.nft_id, NFT.network == Network.Ethereum
-                        ),
-                        or_(
-                            NFTHistory.before_user_id == payload.sub,
-                            NFTHistory.after_user_id == payload.sub,
-                        ),
+                    and_(NFT.id == NFTHistory.nft_id, NFT.network == Network.Ethereum)
+                )
+                .filter(
+                    or_(
+                        NFTHistory.before_user_id == user_id,
+                        NFTHistory.after_user_id == user_id,
                     )
                 )
                 .count()
@@ -943,8 +965,8 @@ class UserAPI(Function):
                             NFT.id == NFTHistory.nft_id, NFT.network == Network.Ethereum
                         ),
                         or_(
-                            NFTHistory.before_user_id == payload.sub,
-                            NFTHistory.after_user_id == payload.sub,
+                            NFTHistory.before_user_id == user_id,
+                            NFTHistory.after_user_id == user_id,
                         ),
                     )
                 )
@@ -955,7 +977,6 @@ class UserAPI(Function):
 
             response_data = []
             for (history, nft) in histories:
-                print(history, nft)
                 data = {
                     "imageUrl": nft.image_url,
                     "name": nft.name,
@@ -1122,6 +1143,7 @@ class UserAPI(Function):
             payload: TokenPayload = Depends(get_current_user_from_oauth),
             session: Session = Depends(get_db_session),
         ):
+            user_id = int(payload.sub)
             nft: NFT = (
                 session.query(NFT)
                 .filter(and_(NFT.id == id, NFT.deleted == False))
@@ -1133,10 +1155,24 @@ class UserAPI(Function):
                     status_code=status.HTTP_404_NOT_FOUND, detail="Not found such NFT"
                 )
 
-            if nft.user_id != int(payload.sub):
+            if nft.user_id != user_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Not owner of that NFT",
+                )
+
+            user: User = session.query(User).filter(User.id == user_id).one()
+
+            if user == None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Not found such User"
+                )
+
+            fee = float(cfg.ETH_MAX_FEE) / 10**9 * (await get_price_eth())
+
+            if user.balance < fee:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient fee"
                 )
 
             try:
@@ -1150,7 +1186,7 @@ class UserAPI(Function):
             nft.deleted = True
 
             nft_history = NFTHistory()
-            nft_history.before_user_id = payload.sub
+            nft_history.before_user_id = user_id
             nft_history.nft_id = nft.id
             nft_history.note = NFTNote.Withdraw
             nft_history.price = nft.price
@@ -1197,7 +1233,7 @@ class UserAPI(Function):
                 .filter(
                     and_(
                         and_(
-                            NFT.id == NFTHistory.nft_id, NFT.network == Network.Ethereum
+                            NFT.id == NFTHistory.nft_id, NFT.network == Network.Solana
                         ),
                         or_(
                             NFTHistory.before_user_id == payload.sub,
@@ -1227,7 +1263,6 @@ class UserAPI(Function):
 
             response_data = []
             for (history, nft) in histories:
-                print(history, nft)
                 data = {
                     "imageUrl": nft.image_url,
                     "name": nft.name,
