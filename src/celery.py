@@ -17,7 +17,6 @@ session = database.get_db_session()
 celery_log = get_task_logger(__name__)
 
 
-
 @celery.task
 def divide(x, y):
     import time
