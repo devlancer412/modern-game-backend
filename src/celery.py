@@ -26,7 +26,7 @@ def divide(x, y):
 
 
 @celery.task
-async def dispatch_transaction(id: int):
+async def dispatch_transaction(id: str):
     transaction: Transaction = (
         session.query(Transaction).filter(Transaction.transaction_id == id).one()
     )
