@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from celery import Celery, shared_task
+from celery import Celery
 from celery.utils.log import get_task_logger
 from src.database import database, Database
 from src.models import Transaction
@@ -17,8 +17,8 @@ session = database.get_db_session()
 celery_log = get_task_logger(__name__)
 
 
-@shared_task(bind=True)
-async def dispatch_transaction(self, id: str):
+@celery.task
+async def dispatch_transaction(id: str):
     transaction: Transaction = (
         session.query(Transaction).filter(Transaction.transaction_id == id).one()
     )
