@@ -18,7 +18,7 @@ celery_log = get_task_logger(__name__)
 
 
 @celery.task
-async def dispatch_transaction(id: str):
+async def dispatch_transaction(id: str) -> None:
     transaction: Transaction = (
         session.query(Transaction).filter(Transaction.transaction_id == id).one()
     )
