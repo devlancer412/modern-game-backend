@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from celery import Celery
 from celery.utils.log import get_task_logger
 from src.database import database, Database
-from src.models import Transaction
+from src.models import Transaction, User
 from src.changenow_api.client import api_wrapper as cnio_api
 from config import cfg
 
@@ -41,3 +41,8 @@ def dispatch_transaction(id: str) -> None:
             celery_log.error(ex)
 
         time.sleep(500)
+
+    user: User = session.query(User).filter(User.id == Transaction.user_id).one()
+
+    user.balance += transaction.amount_out
+    user.deposit_balance += transaction.amount_out
